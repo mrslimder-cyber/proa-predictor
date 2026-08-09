@@ -1,0 +1,10 @@
+.env
+.env.local
+node_modules/
+.next/
+out/
+.vercel
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
