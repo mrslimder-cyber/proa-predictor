@@ -1,0 +1,43 @@
+# Copia este archivo a .github/workflows/pipeline.yml en tu repo.
+#
+# Corre el pipeline automáticamente:
+#   - Cada domingo y lunes a las 23:00 UTC (tras las jornadas de fin de semana)
+#   - También se puede lanzar a mano desde la pestaña "Actions" de GitHub
+#
+# Requiere que definas el secreto DATABASE_URL en Settings > Secrets si usas
+# Postgres/Supabase en vez de SQLite local. Si usas SQLite, el propio commit
+# del archivo .db al repo sirve como "persistencia" simple entre ejecuciones
+# (no ideal a largo plazo, pero válido para empezar).
+
+name: ProA Predictor Pipeline
+
+on:
+  schedule:
+    - cron: "0 23 * * 0,1"  # domingo y lunes 23:00 UTC
+  workflow_dispatch: {}       # permite lanzarlo manualmente
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Ejecutar pipeline
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python pipeline.py
+
+      - name: Commit de resultados (si usas SQLite local)
+        run: |
+          git config user.name "proa-predictor-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add data/ charts/output/ models/artifacts/
+          git diff --staged --quiet || git commit -m "Actualización automática tras jornada"
+          git push
