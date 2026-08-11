@@ -9,7 +9,7 @@ import {
 // Nº mínimo de partidos jugados para poder entrar en un ranking individual.
 export const MIN_GAMES_PLAYER = 3;
 // Nº mínimo de tiros libres intentados para entrar en el ranking de % TL.
-export const MIN_FT_ATT_PLAYER = 0;
+export const MIN_FT_ATT_PLAYER = 2;
 
 // ---------- Temporadas ----------
 
