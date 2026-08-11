@@ -124,22 +124,21 @@ export async function getStandings(season: string): Promise<StandingRow[]> {
     }
   }
 
-  const rows: StandingRow[] = Array.from(acc.entries())
-    .map(([teamId, s]) => {
-      const team = teamById.get(teamId);
-      if (!team) return null;
-      return {
-        team,
-        played: s.played,
-        wins: s.wins,
-        losses: s.losses,
-        pf: s.pf,
-        pa: s.pa,
-        diff: s.pf - s.pa,
-        winPct: s.played > 0 ? s.wins / s.played : 0,
-      };
-    })
-    .filter((r): r is StandingRow => r !== null);
+  const rows: StandingRow[] = [];
+  for (const [teamId, s] of acc.entries()) {
+    const team = teamById.get(teamId);
+    if (!team) continue;
+    rows.push({
+      team,
+      played: s.played,
+      wins: s.wins,
+      losses: s.losses,
+      pf: s.pf,
+      pa: s.pa,
+      diff: s.pf - s.pa,
+      winPct: s.played > 0 ? s.wins / s.played : 0,
+    });
+  }
 
   rows.sort((a, b) => b.winPct - a.winPct || b.diff - a.diff);
   return rows;
@@ -198,25 +197,25 @@ export async function getSeasonLeaders(season: string): Promise<SeasonLeaders> {
     teamAcc.set(s.team_id, e);
   }
 
-  const teamPoints: TeamLeaderRow[] = Array.from(teamAcc.entries())
-    .map(([id, e]) => {
-      const team = teamById.get(id);
-      if (!team || e.games === 0) return null;
-      return { team, games: e.games, avg: e.pts / e.games };
-    })
-    .filter((r): r is TeamLeaderRow => r !== null)
-    .sort((a, b) => b.avg - a.avg)
-    .slice(0, 8);
-
-  const teamFtPct = Array.from(teamAcc.entries())
-    .map(([id, e]) => {
-      const team = teamById.get(id);
-      if (!team || e.ftAtt < 20) return null;
-      return { team, games: e.games, avg: e.pts / e.games, pct: e.ftMade / e.ftAtt };
-    })
-    .filter((r): r is TeamLeaderRow & { pct: number } => r !== null)
-    .sort((a, b) => b.pct - a.pct)
-    .slice(0, 8);
+  const teamPoints: TeamLeaderRow[] = [];
+  const teamFtPct: (TeamLeaderRow & { pct: number })[] = [];
+  for (const [id, e] of teamAcc.entries()) {
+    const team = teamById.get(id);
+    if (!team || e.games === 0) continue;
+    teamPoints.push({ team, games: e.games, avg: e.pts / e.games });
+    if (e.ftAtt >= 20) {
+      teamFtPct.push({
+        team,
+        games: e.games,
+        avg: e.pts / e.games,
+        pct: e.ftMade / e.ftAtt,
+      });
+    }
+  }
+  teamPoints.sort((a, b) => b.avg - a.avg);
+  teamFtPct.sort((a, b) => b.pct - a.pct);
+  const teamPointsTop = teamPoints.slice(0, 8);
+  const teamFtPctTop = teamFtPct.slice(0, 8);
 
   // --- Jugadores: puntos por partido y % tiros libres ---
   const playerAcc = new Map<
@@ -248,38 +247,41 @@ export async function getSeasonLeaders(season: string): Promise<SeasonLeaders> {
     playerAcc.set(s.player_id, e);
   }
 
-  const playerPoints: PlayerLeaderRow[] = Array.from(playerAcc.entries())
-    .map(([playerId, e]) => {
-      if (e.games < MIN_GAMES_PLAYER) return null;
-      return {
+  const playerPoints: PlayerLeaderRow[] = [];
+  const playerFtPct: PlayerLeaderRow[] = [];
+  for (const [playerId, e] of playerAcc.entries()) {
+    const team = teamById.get(e.teamId) ?? null;
+    if (e.games >= MIN_GAMES_PLAYER) {
+      playerPoints.push({
         playerId,
         playerName: e.name,
-        team: teamById.get(e.teamId) ?? null,
+        team,
         games: e.games,
         avg: e.pts / e.games,
-      };
-    })
-    .filter((r): r is PlayerLeaderRow => r !== null)
-    .sort((a, b) => b.avg - a.avg)
-    .slice(0, 10);
+      });
+      if (e.ftAtt >= MIN_FT_ATT_PLAYER) {
+        playerFtPct.push({
+          playerId,
+          playerName: e.name,
+          team,
+          games: e.games,
+          avg: e.pts / e.games,
+          pct: e.ftMade / e.ftAtt,
+        });
+      }
+    }
+  }
+  playerPoints.sort((a, b) => b.avg - a.avg);
+  playerFtPct.sort((a, b) => (b.pct ?? 0) - (a.pct ?? 0));
+  const playerPointsTop = playerPoints.slice(0, 10);
+  const playerFtPctTop = playerFtPct.slice(0, 10);
 
-  const playerFtPct: PlayerLeaderRow[] = Array.from(playerAcc.entries())
-    .map(([playerId, e]) => {
-      if (e.games < MIN_GAMES_PLAYER || e.ftAtt < MIN_FT_ATT_PLAYER) return null;
-      return {
-        playerId,
-        playerName: e.name,
-        team: teamById.get(e.teamId) ?? null,
-        games: e.games,
-        avg: e.pts / e.games,
-        pct: e.ftMade / e.ftAtt,
-      };
-    })
-    .filter((r): r is PlayerLeaderRow => r !== null)
-    .sort((a, b) => (b.pct ?? 0) - (a.pct ?? 0))
-    .slice(0, 10);
-
-  return { teamPoints, teamFtPct, playerPoints, playerFtPct };
+  return {
+    teamPoints: teamPointsTop,
+    teamFtPct: teamFtPctTop,
+    playerPoints: playerPointsTop,
+    playerFtPct: playerFtPctTop,
+  };
 }
 
 // ---------- Detalle de equipo dentro de una temporada ----------
@@ -352,26 +354,25 @@ export async function getTeamDetail(
   const ownPlayerStats = playerStatsAll.filter((s) => s.team_id === teamId);
 
   // --- Game log (para el gráfico de evolución de puntos) ---
-  const gameLog: TeamGameLog[] = teamGames
-    .map((g) => {
-      const isHome = g.home_team_id === teamId;
-      const pts = isHome ? g.home_score : g.away_score;
-      const oppPts = isHome ? g.away_score : g.home_score;
-      const oppId = isHome ? g.away_team_id : g.home_team_id;
-      if (pts == null || oppPts == null) return null;
-      return {
-        gameId: g.id,
-        date: g.date,
-        matchday: g.matchday,
-        opponent: opponentTeams.get(oppId)?.name ?? "Rival",
-        isHome,
-        pts,
-        oppPts,
-        win: pts > oppPts,
-      };
-    })
-    .filter((r): r is TeamGameLog => r !== null)
-    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  const gameLog: TeamGameLog[] = [];
+  for (const g of teamGames) {
+    const isHome = g.home_team_id === teamId;
+    const pts = isHome ? g.home_score : g.away_score;
+    const oppPts = isHome ? g.away_score : g.home_score;
+    const oppId = isHome ? g.away_team_id : g.home_team_id;
+    if (pts == null || oppPts == null) continue;
+    gameLog.push({
+      gameId: g.id,
+      date: g.date,
+      matchday: g.matchday,
+      opponent: opponentTeams.get(oppId)?.name ?? "Rival",
+      isHome,
+      pts,
+      oppPts,
+      win: pts > oppPts,
+    });
+  }
+  gameLog.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
   // --- Plantilla (roster) con medias por jugador ---
   const playerAcc = new Map<
