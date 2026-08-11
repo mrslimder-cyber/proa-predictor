@@ -59,6 +59,13 @@ export default async function HomePage() {
 
   return (
     <div>
+      <div className="page-header">
+        <div className="eyebrow">En directo</div>
+        <h1 className="page-title">Próximos partidos</h1>
+        <p className="page-sub">
+          Predicciones del modelo para los próximos {rows.length} encuentros de la Pro A.
+        </p>
+      </div>
       {rows.map((row) => (
         <div className="panel" key={row.id}>
           <div className="meta-row">

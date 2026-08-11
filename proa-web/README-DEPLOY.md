@@ -68,6 +68,26 @@ mensaje de "todavía no hay predicciones" — es el comportamiento esperado.
 En cuanto el pipeline meta el primer partido en Supabase, la página se
 llena sola (se refresca automáticamente cada 5 minutos).
 
+## Novedades de esta versión
+
+- **`/temporadas`**: elige cualquier temporada histórica (según lo que haya
+  en `games.season`) y verás la clasificación real (V-D, PF, PC, +/-),
+  calculada a partir de los partidos con `status = 'final'`.
+- En esa misma página: **líderes de la temporada** — puntos por partido
+  (equipos y jugadores, mínimo 3 partidos jugados) y % de tiros libres
+  (equipos y jugadores, con un mínimo de intentos para evitar rankings
+  con muestras minúsculas).
+- **`/temporadas/[temporada]/equipos/[id]`**: al elegir un equipo aparecen
+  sus medias de la temporada, dos gráficos (puntos anotados vs. recibidos
+  por jornada, y media de puntos por jugador), el top 3 de puntos, rebotes,
+  asistencias y % de tiros libres, y la plantilla completa con las medias
+  de cada jugador.
+- Estas páginas usan las tablas `team_game_stats` y `player_game_stats`,
+  que no tienen RLS activado en `schema.sql` (por eso son legibles con la
+  `anon key` sin política adicional). Si quieres reforzarlo, puedes
+  activar RLS y añadir una política de lectura pública igual que en
+  `teams`/`games`, sin que cambie nada en el código del frontend.
+
 ## Probar en local antes de desplegar (opcional)
 
 ```bash

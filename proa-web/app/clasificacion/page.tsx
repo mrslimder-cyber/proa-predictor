@@ -46,25 +46,45 @@ export default async function ClasificacionPage() {
   }
 
   return (
-    <div className="panel">
-      <table>
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>Equipo</th>
-            <th>Elo</th>
-          </tr>
-        </thead>
-        <tbody>
-          {ranked.map((r, i) => (
-            <tr key={r.team.id}>
-              <td className="num">{i + 1}</td>
-              <td>{r.team.name}</td>
-              <td className="num">{Math.round(r.elo)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div>
+      <div className="page-header">
+        <div className="eyebrow">Rating del modelo</div>
+        <h1 className="page-title">Ranking Elo</h1>
+        <p className="page-sub">
+          Fuerza actual de cada equipo según el sistema Elo interno del predictor.
+          Para la clasificación real (victorias y derrotas) por temporada, visita{" "}
+          <a href="/temporadas" style={{ color: "var(--amber)", fontWeight: 600 }}>
+            Temporadas
+          </a>
+          .
+        </p>
+      </div>
+      <div className="panel">
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Equipo</th>
+                <th>Elo</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ranked.map((r, i) => (
+                <tr key={r.team.id}>
+                  <td className="num">
+                    <span className={`rank-badge ${i === 0 ? "top1" : i === 1 ? "top2" : i === 2 ? "top3" : ""}`}>
+                      {i + 1}
+                    </span>
+                  </td>
+                  <td>{r.team.name}</td>
+                  <td className="num">{Math.round(r.elo)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }

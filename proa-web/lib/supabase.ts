@@ -44,3 +44,52 @@ export type TeamRating = {
   date: string;
   elo_pre_game: number;
 };
+
+export type TeamGameStats = {
+  id: number;
+  game_id: number;
+  team_id: number;
+  is_home: boolean;
+  fg2_made: number | null;
+  fg2_att: number | null;
+  fg3_made: number | null;
+  fg3_att: number | null;
+  ft_made: number | null;
+  ft_att: number | null;
+  oreb: number | null;
+  dreb: number | null;
+  reb: number | null;
+  ast: number | null;
+  tov: number | null;
+  stl: number | null;
+  blk: number | null;
+  pf: number | null;
+  pts: number | null;
+  efg_pct: number | null;
+  tov_pct: number | null;
+  orb_pct: number | null;
+  ft_rate: number | null;
+};
+
+export type PlayerGameStats = {
+  id: number;
+  game_id: number;
+  team_id: number;
+  player_id: number;
+  player_name: string;
+  minutes: number | null;
+  pts: number | null;
+  reb: number | null;
+  ast: number | null;
+  stl: number | null;
+  blk: number | null;
+  tov: number | null;
+  pf: number | null;
+  valuation: number | null;
+  fg2_made: number | null;
+  fg2_att: number | null;
+  fg3_made: number | null;
+  fg3_att: number | null;
+  ft_made: number | null;
+  ft_att: number | null;
+};

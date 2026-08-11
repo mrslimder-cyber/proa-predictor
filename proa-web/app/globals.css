@@ -1,15 +1,26 @@
-@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
 
 :root {
-  --court-bg: #14181c;
-  --panel: #1c2228;
-  --line: #2a3138;
-  --chalk: #eef1f2;
-  --chalk-dim: #9aa4ab;
+  --court-bg: #10141a;
+  --court-bg-2: #151b22;
+  --panel: #1a2028;
+  --panel-hover: #1f2731;
+  --line: #29323d;
+  --chalk: #f3f5f6;
+  --chalk-dim: #98a3ad;
+  --chalk-dimmer: #6b7680;
   --amber: #ff8a2b;
   --amber-dim: #c9691a;
-  --led: #ff4d4d;
-  --win: #4fce8a;
+  --amber-soft: rgba(255, 138, 43, 0.14);
+  --led: #ff5c5c;
+  --win: #46cf8b;
+  --win-soft: rgba(70, 207, 139, 0.14);
+  --loss: #ff6b6b;
+  --loss-soft: rgba(255, 107, 107, 0.12);
+  --radius: 14px;
+  --radius-sm: 9px;
+  --shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+  --max-w: 1080px;
 }
 
 * { box-sizing: border-box; }
@@ -20,12 +31,15 @@ html, body {
   background: var(--court-bg);
   color: var(--chalk);
   font-family: 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
 body {
   background-image:
-    radial-gradient(circle at 15% 0%, rgba(255,138,43,0.06), transparent 40%),
-    repeating-linear-gradient(180deg, rgba(255,255,255,0.015) 0px, rgba(255,255,255,0.015) 1px, transparent 1px, transparent 3px);
+    radial-gradient(circle at 12% -4%, rgba(255, 138, 43, 0.10), transparent 42%),
+    radial-gradient(circle at 100% 0%, rgba(70, 207, 139, 0.05), transparent 38%),
+    repeating-linear-gradient(180deg, rgba(255,255,255,0.012) 0px, rgba(255,255,255,0.012) 1px, transparent 1px, transparent 3px);
+  background-attachment: fixed;
 }
 
 .scorefont {
@@ -35,65 +49,146 @@ body {
 
 a { color: inherit; text-decoration: none; }
 
+::selection { background: var(--amber-soft); color: var(--chalk); }
+
+::-webkit-scrollbar { height: 8px; width: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--line); border-radius: 8px; }
+
 .shell {
-  max-width: 880px;
+  max-width: var(--max-w);
   margin: 0 auto;
-  padding: 32px 20px 80px;
+  padding: 22px 20px 90px;
 }
 
+/* ---------- Top bar ---------- */
+
 .topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
-  margin-bottom: 28px;
+  gap: 16px;
+  margin: -22px -20px 30px;
+  padding: 16px 20px;
   flex-wrap: wrap;
-  gap: 12px;
+  background: rgba(16, 20, 26, 0.82);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--line);
 }
 
 .brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-family: 'Oswald', sans-serif;
   font-weight: 700;
-  font-size: 22px;
-  letter-spacing: 0.04em;
+  font-size: 20px;
+  letter-spacing: 0.03em;
   text-transform: uppercase;
   color: var(--chalk);
 }
+.brand .ball { font-size: 18px; }
 .brand span { color: var(--amber); }
 
-nav { display: flex; gap: 18px; }
-nav a {
+nav.mainnav { display: flex; gap: 4px; flex-wrap: wrap; }
+nav.mainnav a {
   font-size: 13px;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.04em;
   color: var(--chalk-dim);
-  padding-bottom: 2px;
-  border-bottom: 2px solid transparent;
+  padding: 7px 12px;
+  border-radius: 20px;
+  transition: background 0.15s ease, color 0.15s ease;
 }
-nav a.active { color: var(--chalk); border-bottom-color: var(--amber); }
+nav.mainnav a:hover { color: var(--chalk); background: var(--panel-hover); }
+nav.mainnav a.active { color: var(--court-bg); background: var(--amber); }
+
+/* ---------- Hero / page headers ---------- */
+
+.page-header { margin-bottom: 26px; }
+.eyebrow {
+  font-family: 'Oswald', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--amber);
+  margin-bottom: 6px;
+}
+.page-title {
+  font-family: 'Oswald', sans-serif;
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  margin: 0 0 6px;
+}
+.page-sub { color: var(--chalk-dim); font-size: 14px; margin: 0; }
+
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--chalk-dim);
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.breadcrumb a { color: var(--chalk-dim); transition: color 0.15s ease; }
+.breadcrumb a:hover { color: var(--amber); }
+.breadcrumb .sep { opacity: 0.5; }
+.breadcrumb .current { color: var(--chalk); font-weight: 600; }
+
+/* ---------- Panels / cards ---------- */
 
 .panel {
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--radius);
   padding: 20px;
   margin-bottom: 16px;
+  box-shadow: var(--shadow);
+}
+.panel.tight { padding: 14px 18px; }
+
+.section-title {
+  font-family: 'Oswald', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--chalk-dim);
+  margin: 0 0 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.section-title .dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--amber);
+  display: inline-block;
 }
 
 .empty {
   text-align: center;
   padding: 56px 20px;
   border: 1px dashed var(--line);
-  border-radius: 10px;
+  border-radius: var(--radius);
   color: var(--chalk-dim);
 }
 .empty .digits {
   font-family: 'Oswald', sans-serif;
-  font-size: 48px;
+  font-size: 44px;
   font-weight: 700;
   letter-spacing: 0.08em;
   color: var(--line);
   margin-bottom: 10px;
 }
+
+/* ---------- Matchup / predicciones ---------- */
 
 .matchup {
   display: grid;
@@ -138,6 +233,8 @@ nav a.active { color: var(--chalk); border-bottom-color: var(--amber); }
   justify-content: space-between;
 }
 
+/* ---------- Tablas ---------- */
+
 table { width: 100%; border-collapse: collapse; }
 th, td {
   text-align: left;
@@ -154,10 +251,214 @@ th {
 }
 td.num { font-family: 'Oswald', sans-serif; font-variant-numeric: tabular-nums; }
 tr:last-child td { border-bottom: none; }
+tbody tr { transition: background 0.12s ease; }
+tbody tr.linked { cursor: pointer; }
+tbody tr.linked:hover { background: var(--panel-hover); }
 
-footer {
-  margin-top: 40px;
+.table-scroll { overflow-x: auto; margin: -4px; padding: 4px; }
+.table-scroll table { min-width: 480px; }
+
+/* ---------- Grids de tarjetas (temporadas / equipos) ---------- */
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.tile {
+  display: block;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 16px;
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+.tile:hover {
+  transform: translateY(-2px);
+  border-color: var(--amber-dim);
+  background: var(--panel-hover);
+}
+.tile .tile-title {
+  font-family: 'Oswald', sans-serif;
+  font-weight: 600;
+  font-size: 16px;
+  margin-bottom: 4px;
+}
+.tile .tile-sub { font-size: 12px; color: var(--chalk-dim); }
+
+.team-tile { display: flex; align-items: center; gap: 10px; }
+.team-badge {
+  width: 34px; height: 34px;
+  border-radius: 8px;
+  background: var(--amber-soft);
+  color: var(--amber);
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Oswald', sans-serif;
+  font-weight: 700;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+/* ---------- Chips / badges ---------- */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: 20px;
+}
+.chip.win { color: var(--win); background: var(--win-soft); }
+.chip.loss { color: var(--loss); background: var(--loss-soft); }
+.chip.neutral { color: var(--chalk-dim); background: var(--line); }
+
+.rank-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px; height: 22px;
+  border-radius: 6px;
+  font-family: 'Oswald', sans-serif;
   font-size: 12px;
+  font-weight: 700;
+  background: var(--line);
   color: var(--chalk-dim);
-  text-align: center;
+}
+.rank-badge.top1 { background: var(--amber); color: var(--court-bg); }
+.rank-badge.top2 { background: #d9dde1; color: var(--court-bg); }
+.rank-badge.top3 { background: #c98a4f; color: var(--court-bg); }
+
+/* ---------- Selector (temporada / equipo) ---------- */
+
+.select-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+select.season-select {
+  appearance: none;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: var(--chalk);
+  font-family: 'Oswald', sans-serif;
+  font-weight: 600;
+  font-size: 14px;
+  padding: 9px 34px 9px 14px;
+  border-radius: 20px;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%2398a3ad'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+}
+
+/* ---------- Stat leaders ---------- */
+
+.leader-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+}
+
+.leader-list { list-style: none; margin: 0; padding: 0; }
+.leader-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+.leader-row:last-child { border-bottom: none; }
+.leader-name { flex: 1; min-width: 0; }
+.leader-name .primary { font-size: 14px; font-weight: 600; }
+.leader-name .secondary { font-size: 12px; color: var(--chalk-dim); }
+.leader-value {
+  font-family: 'Oswald', sans-serif;
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--amber);
+  white-space: nowrap;
+}
+.leader-value .unit { font-size: 11px; color: var(--chalk-dim); font-weight: 500; margin-left: 2px; }
+
+/* ---------- Top-3 stat cards (detalle de equipo) ---------- */
+
+.stat-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+.podium { display: flex; flex-direction: column; gap: 10px; }
+.podium-row { display: flex; align-items: center; gap: 10px; }
+.podium-name { flex: 1; font-size: 13.5px; font-weight: 500; }
+.podium-bar-track {
+  flex: 1;
+  height: 6px;
+  background: var(--line);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.podium-bar-fill { height: 100%; background: var(--amber); border-radius: 4px; }
+.podium-value {
+  font-family: 'Oswald', sans-serif;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--chalk);
+  width: 40px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+/* ---------- Summary stat pills (cabecera de equipo) ---------- */
+
+.pill-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.stat-pill {
+  background: var(--court-bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 12px 16px;
+  min-width: 92px;
+}
+.stat-pill .label {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--chalk-dim);
+  margin-bottom: 4px;
+}
+.stat-pill .value { font-family: 'Oswald', sans-serif; font-size: 22px; font-weight: 700; }
+
+/* ---------- Chart container ---------- */
+
+.chart-card { padding-bottom: 8px; }
+.chart-wrap { width: 100%; height: 260px; }
+.chart-wrap.short { height: 200px; }
+
+/* ---------- Team header (detalle equipo) ---------- */
+
+.team-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+.team-header .team-badge { width: 52px; height: 52px; font-size: 18px; border-radius: 12px; }
+.team-header h1 { font-family: 'Oswald', sans-serif; font-size: 26px; font-weight: 700; margin: 0 0 2px; }
+.team-header .team-header-sub { color: var(--chalk-dim); font-size: 13px; }
+
+footer { margin-top: 40px; font-size: 12px; color: var(--chalk-dim); text-align: center; }
+
+@media (max-width: 640px) {
+  .page-title { font-size: 24px; }
+  .team-header h1 { font-size: 21px; }
+  nav.mainnav a { padding: 6px 9px; font-size: 12px; }
+  .topbar { margin: -22px -16px 24px; padding: 14px 16px; }
+  .shell { padding: 18px 16px 80px; }
 }

@@ -1,8 +1,9 @@
 import "./globals.css";
+import NavLinks from "./nav-links";
 
 export const metadata = {
   title: "ProA Predictor",
-  description: "Predicciones de la Pro A alemana de baloncesto",
+  description: "Predicciones, clasificación y estadísticas de la Pro A alemana de baloncesto",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -11,13 +12,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <div className="shell">
           <div className="topbar">
-            <div className="brand">
-              PROA <span>PREDICTOR</span>
-            </div>
-            <nav>
-              <a href="/">Próximos partidos</a>
-              <a href="/clasificacion">Clasificación Elo</a>
-            </nav>
+            <a href="/" className="brand">
+              <span className="ball">🏀</span> PROA <span>PREDICTOR</span>
+            </a>
+            <NavLinks />
           </div>
           {children}
           <footer>
