@@ -15,6 +15,7 @@ se rompa son las funciones que extraen IDs de equipo/jugador vía regex
 sobre los href (`_extract_id_from_href`). Las tablas de estadísticas
 (vía read_html) son más resistentes a cambios de diseño.
 """
+import io
 import re
 import time
 from datetime import datetime
@@ -33,7 +34,7 @@ from config import (
 )
 
 TEAM_HREF_RE = re.compile(r"/equipo/(\d+)/([^/]+)/")
-GAME_HREF_RE = re.compile(r"/partido/(\d+)/([^/\"]+)")
+GAME_HREF_RE = re.compile(r"/partido(?:-preview)?/(\d+)/([^/\"]+)")
 
 SPANISH_MONTHS = {
     "ene": 1, "feb": 2, "mar": 3, "abr": 4, "may": 5, "jun": 6,
@@ -206,7 +207,14 @@ def get_boxscore(game_url: str) -> dict:
         }
     """
     soup = _get(game_url)
-    tables = pd.read_html(str(soup))  # todas las tablas <table> de la página
+    # OJO: pd.read_html() con un string literal (en vez de una URL/ruta/buffer)
+    # comprueba antes internamente si ese string podría ser una ruta de archivo
+    # (os.path.exists(...)). En Windows, con un string tan largo como un HTML
+    # completo, esa comprobación no devuelve False limpiamente: lanza un OSError
+    # real ("[Errno 2] No such file or directory: <!DOCTYPE html>...") que
+    # pandas no atrapa. Envolviendo el string en io.StringIO evitamos que pandas
+    # intente tratarlo como ruta de archivo en absoluto.
+    tables = pd.read_html(io.StringIO(str(soup)))  # todas las tablas <table> de la página
 
     # La tabla "Estadísticas de los equipos" es la que tiene 2 filas (una por equipo)
     # y columnas tipo 2M, 2A, 3M, 3A, FGM... La identificamos por sus columnas.

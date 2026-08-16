@@ -15,7 +15,7 @@ from config import MODELS_DIR, MODEL_VERSION, MIN_GAMES_FOR_FEATURES, ROLLING_WI
 from db.database import get_session
 from db.models import Game, TeamGameStats, Prediction
 from features.elo import EloSystem
-from features.feature_engineering import TeamState
+from features.feature_engineering import TeamState, _safe_stat
 
 
 def _rebuild_state_up_to_today():
@@ -68,11 +68,11 @@ def _rebuild_state_up_to_today():
             state.margins.append(pts_for - pts_against)
             state.results.append(int(pts_for > pts_against))
             state.is_home_flags.append(is_home)
-            state.efg_for.append(ts.get("efg_pct", np.nan))
-            state.efg_against.append(opp_ts.get("efg_pct", np.nan))
-            state.tov_pct_for.append(ts.get("tov_pct", np.nan))
-            state.orb_pct_for.append(ts.get("orb_pct", np.nan))
-            state.ft_rate_for.append(ts.get("ft_rate", np.nan))
+            state.efg_for.append(_safe_stat(ts, "efg_pct"))
+            state.efg_against.append(_safe_stat(opp_ts, "efg_pct"))
+            state.tov_pct_for.append(_safe_stat(ts, "tov_pct"))
+            state.orb_pct_for.append(_safe_stat(ts, "orb_pct"))
+            state.ft_rate_for.append(_safe_stat(ts, "ft_rate"))
             state.last_game_date = g.date
 
     return elo, team_states, upcoming

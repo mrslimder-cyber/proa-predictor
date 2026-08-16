@@ -29,6 +29,18 @@ from db.models import Game, TeamGameStats
 from features.elo import EloSystem
 
 
+def _safe_stat(d: dict, key: str) -> float:
+    """
+    Como d.get(key, np.nan), pero también cubre el caso en que la clave
+    SÍ existe pero su valor es None (p. ej. una stat que no se pudo
+    parsear del boxscore y quedó NULL en la base de datos). dict.get()
+    solo usa el valor por defecto cuando la clave falta, no cuando el
+    valor es None -- por eso hacía falta este wrapper explícito.
+    """
+    value = d.get(key)
+    return value if value is not None else np.nan
+
+
 def estimate_possessions(row: dict) -> float:
     """Posesiones ≈ FGA - ORB + TOV + 0.44*FTA (fórmula estándar de Dean Oliver)."""
     fga = row["fg2_att"] + row["fg3_att"]
@@ -164,11 +176,11 @@ def build_dataset() -> pd.DataFrame:
             state.margins.append(pts_for - pts_against)
             state.results.append(int(pts_for > pts_against))
             state.is_home_flags.append(is_home)
-            state.efg_for.append(ts.get("efg_pct", np.nan))
-            state.efg_against.append(opp_ts.get("efg_pct", np.nan))
-            state.tov_pct_for.append(ts.get("tov_pct", np.nan))
-            state.orb_pct_for.append(ts.get("orb_pct", np.nan))
-            state.ft_rate_for.append(ts.get("ft_rate", np.nan))
+            state.efg_for.append(_safe_stat(ts, "efg_pct"))
+            state.efg_against.append(_safe_stat(opp_ts, "efg_pct"))
+            state.tov_pct_for.append(_safe_stat(ts, "tov_pct"))
+            state.orb_pct_for.append(_safe_stat(ts, "orb_pct"))
+            state.ft_rate_for.append(_safe_stat(ts, "ft_rate"))
             state.last_game_date = g.date
 
     df = pd.DataFrame(rows)

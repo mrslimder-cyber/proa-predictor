@@ -48,6 +48,10 @@ def season_calendar_url(season: str) -> str:
     (por ejemplo "2023-2024" en vez de "2023", o un query param), ajusta
     esta única función — el resto del scraper no depende de la URL exacta.
     """
+    if season == CURRENT_SEASON:
+        # La temporada más reciente vive en /calendario SIN sufijo de año.
+        return f"{PROBALLERS_LEAGUE_URL}/calendario"
+
     start_year = season.split("-")[0]
     return f"{PROBALLERS_LEAGUE_URL}/calendario/{start_year}"
 
