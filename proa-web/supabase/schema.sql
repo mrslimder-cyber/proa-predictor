@@ -81,3 +81,24 @@ create policy "public read teams" on teams for select using (true);
 create policy "public read games" on games for select using (true);
 create policy "public read predictions" on predictions for select using (true);
 create policy "public read team_ratings" on team_ratings for select using (true);
+
+-- Devuelve las temporadas distintas presentes en `games`.
+-- La usamos desde la web en vez de un SELECT normal porque la API de
+-- Supabase corta cualquier consulta a ~1000 filas por proyecto
+-- (db-max-rows), un límite que un .range() más grande desde el cliente
+-- NO puede saltarse. Con varias temporadas de ~306 partidos cada una se
+-- supera ese límite fácilmente, y el recorte puede comerse temporadas
+-- enteras del listado. Al agregar en el propio servidor, esta función
+-- solo devuelve un puñado de filas (una por temporada) y nunca choca
+-- con ese límite.
+create or replace function public.distinct_seasons()
+returns table(season text)
+language sql
+stable
+as $$
+  select distinct games.season
+  from public.games
+  order by games.season desc;
+$$;
+
+grant execute on function public.distinct_seasons() to anon, authenticated;

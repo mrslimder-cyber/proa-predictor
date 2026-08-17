@@ -1,18 +1,44 @@
 import { supabase, Team, TeamRating } from "@/lib/supabase";
 import { TeamInline } from "@/lib/team-logo";
+import { getSeasons } from "@/lib/stats";
 
 export const revalidate = 300;
 
 type Ranked = { team: Team; elo: number };
 
-async function getRanking(): Promise<Ranked[]> {
-  const { data: teams } = await supabase.from("teams").select("*");
-  if (!teams || teams.length === 0) return [];
+async function getRanking(): Promise<{ ranked: Ranked[]; season: string | null }> {
+  const seasons = await getSeasons();
+  const season = seasons[0] ?? null; // temporada más reciente
+  if (!season) return { ranked: [], season: null };
+
+  // OJO: antes se listaban TODOS los equipos que hubiera alguna vez en
+  // `teams`, incluidos los ya descendidos/desaparecidos de temporadas
+  // pasadas. Ahora nos quedamos solo con los que tienen algún partido en
+  // la temporada más reciente, que son los que compiten esta temporada.
+  const { data: gamesThisSeason } = await supabase
+    .from("games")
+    .select("home_team_id, away_team_id")
+    .eq("season", season)
+    .range(0, 999);
+
+  const activeTeamIds = new Set<number>();
+  for (const g of gamesThisSeason ?? []) {
+    activeTeamIds.add(g.home_team_id);
+    activeTeamIds.add(g.away_team_id);
+  }
+  if (activeTeamIds.size === 0) return { ranked: [], season };
+
+  const { data: teams } = await supabase
+    .from("teams")
+    .select("*")
+    .in("id", Array.from(activeTeamIds));
+  if (!teams || teams.length === 0) return { ranked: [], season };
 
   // Para cada equipo, cogemos su rating Elo más reciente.
   const { data: ratings } = await supabase
     .from("team_ratings")
     .select("*")
+    .in("team_id", Array.from(activeTeamIds))
     .order("date", { ascending: false });
 
   const latestByTeam = new Map<number, TeamRating>();
@@ -20,16 +46,18 @@ async function getRanking(): Promise<Ranked[]> {
     if (!latestByTeam.has(r.team_id)) latestByTeam.set(r.team_id, r);
   }
 
-  return teams
+  const ranked = teams
     .map((team) => ({
       team,
       elo: latestByTeam.get(team.id)?.elo_pre_game ?? 1500,
     }))
     .sort((a, b) => b.elo - a.elo);
+
+  return { ranked, season };
 }
 
 export default async function ClasificacionPage() {
-  const ranked = await getRanking();
+  const { ranked, season } = await getRanking();
 
   if (ranked.length === 0) {
     return (
@@ -52,8 +80,9 @@ export default async function ClasificacionPage() {
         <div className="eyebrow">Rating del modelo</div>
         <h1 className="page-title">Ranking Elo</h1>
         <p className="page-sub">
-          Fuerza actual de cada equipo según el sistema Elo interno del predictor.
-          Para la clasificación real (victorias y derrotas) por temporada, visita{" "}
+          Fuerza actual de cada equipo de la temporada {season} según el sistema Elo
+          interno del predictor. Para la clasificación real (victorias y derrotas) por
+          temporada, visita{" "}
           <a href="/temporadas" style={{ color: "var(--amber)", fontWeight: 600 }}>
             Temporadas
           </a>

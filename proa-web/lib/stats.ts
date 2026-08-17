@@ -15,15 +15,24 @@ export const MIN_FT_ATT_PLAYER = 2;
 // ---------- Temporadas ----------
 
 export async function getSeasons(): Promise<string[]> {
-  // OJO: sin .range(), Supabase corta en 1000 filas por defecto. Con 5+
-  // temporadas de ~306 partidos cada una ya se superan las 1000 filas, y
-  // el orden físico de la tabla NO garantiza que las devuelva agrupadas
-  // por temporada -- de hecho puede saltarse temporadas enteras (visto en
-  // producción: "2025-2026" desaparecía del listado). Pedimos explícitamente
-  // más filas de las que puede haber para traerlas todas.
-  const { data } = await supabase.from("games").select("season").range(0, 9999);
-  const set = new Set((data ?? []).map((g) => g.season));
-  return Array.from(set).sort((a, b) => b.localeCompare(a)); // más reciente primero
+  // Usamos una función SQL (distinct_seasons) en vez de traer todas las
+  // filas de `games` y sacar los valores distintos en el cliente: la API
+  // de Supabase corta cualquier SELECT normal en ~1000 filas por proyecto
+  // (db-max-rows), un límite que NO se puede saltar pidiendo un .range()
+  // más grande desde el cliente. Con 1500+ partidos en la tabla, ese
+  // corte se comía temporadas enteras (se vio en producción con
+  // "2025-2026"). La función agrega en el propio servidor y devuelve solo
+  // un puñado de filas (una por temporada), así que nunca choca con ese límite.
+  const { data, error } = await supabase.rpc("distinct_seasons");
+  if (error || !data) {
+    // Red de seguridad por si la función RPC no existe todavía (p. ej. no
+    // se aplicó la migración): recurrimos al método anterior, que al menos
+    // funciona bien mientras la tabla tenga menos de ~1000 filas.
+    const { data: fallback } = await supabase.from("games").select("season").range(0, 9999);
+    const set = new Set((fallback ?? []).map((g) => g.season));
+    return Array.from(set).sort((a, b) => b.localeCompare(a));
+  }
+  return data.map((row: { season: string }) => row.season);
 }
 
 export async function getSeasonSummary(season: string) {
