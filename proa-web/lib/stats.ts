@@ -4,6 +4,7 @@ import {
   Game,
   TeamGameStats,
   PlayerGameStats,
+  Prediction,
 } from "@/lib/supabase";
 
 // Nº mínimo de partidos jugados para poder entrar en un ranking individual.
@@ -14,7 +15,13 @@ export const MIN_FT_ATT_PLAYER = 2;
 // ---------- Temporadas ----------
 
 export async function getSeasons(): Promise<string[]> {
-  const { data } = await supabase.from("games").select("season");
+  // OJO: sin .range(), Supabase corta en 1000 filas por defecto. Con 5+
+  // temporadas de ~306 partidos cada una ya se superan las 1000 filas, y
+  // el orden físico de la tabla NO garantiza que las devuelva agrupadas
+  // por temporada -- de hecho puede saltarse temporadas enteras (visto en
+  // producción: "2025-2026" desaparecía del listado). Pedimos explícitamente
+  // más filas de las que puede haber para traerlas todas.
+  const { data } = await supabase.from("games").select("season").range(0, 9999);
   const set = new Set((data ?? []).map((g) => g.season));
   return Array.from(set).sort((a, b) => b.localeCompare(a)); // más reciente primero
 }
@@ -66,7 +73,7 @@ async function getPlayerStatsForGames(
   return data ?? [];
 }
 
-async function getTeamsById(ids: number[]): Promise<Map<number, Team>> {
+export async function getTeamsById(ids: number[]): Promise<Map<number, Team>> {
   if (ids.length === 0) return new Map();
   const { data } = await supabase.from("teams").select("*").in("id", ids);
   return new Map((data ?? []).map((t) => [t.id, t]));
@@ -468,4 +475,174 @@ export async function getTeamDetail(
 export async function getSeasonTeams(season: string): Promise<Team[]> {
   const standings = await getStandings(season);
   return standings.map((s) => s.team);
+}
+
+// ---------- Resumen de partido (al hacer clic en un partido) ----------
+
+const RECENT_FORM_GAMES = 8;
+
+export type FormEntry = {
+  gameId: number;
+  date: string;
+  opponent: Team | null;
+  isHome: boolean;
+  pts: number;
+  oppPts: number;
+  win: boolean;
+};
+
+export type MatchupTeamSummary = {
+  team: Team;
+  season: string; // temporada de la que salen estas stats (puede ser una anterior, ver fallback abajo)
+  isFallbackSeason: boolean; // true si la temporada actual no tenía partidos jugados todavía
+  record: { wins: number; losses: number };
+  ptsForAvg: number | null;
+  ptsAgainstAvg: number | null;
+  efgAvg: number | null;
+  recentForm: FormEntry[]; // ordenados del más antiguo al más reciente
+};
+
+export type MatchupPreview = {
+  game: Game;
+  home: MatchupTeamSummary;
+  away: MatchupTeamSummary;
+  prediction: Prediction | null;
+};
+
+async function getFinishedTeamGames(
+  season: string,
+  teamId: number,
+  beforeDate?: string
+): Promise<Game[]> {
+  let query = supabase
+    .from("games")
+    .select("*")
+    .eq("season", season)
+    .eq("status", "final")
+    .or(`home_team_id.eq.${teamId},away_team_id.eq.${teamId}`)
+    .order("date", { ascending: true })
+    .range(0, 999);
+  if (beforeDate) query = query.lt("date", beforeDate);
+  const { data } = await query;
+  return data ?? [];
+}
+
+async function buildTeamSummary(
+  currentSeason: string,
+  team: Team,
+  beforeDate: string,
+  allSeasonsDesc: string[]
+): Promise<MatchupTeamSummary> {
+  let season = currentSeason;
+  let games = await getFinishedTeamGames(season, team.id, beforeDate);
+  let isFallbackSeason = false;
+
+  // En pretemporada (o al inicio de la temporada), un equipo puede no tener
+  // TODAVÍA ningún partido jugado en `currentSeason`. En vez de enseñar un
+  // resumen vacío, caemos a la temporada anterior más reciente en la que
+  // ese equipo sí jugó, para que la página siempre tenga algo útil que mostrar.
+  if (games.length === 0) {
+    const idx = allSeasonsDesc.indexOf(currentSeason);
+    for (let i = idx + 1; i < allSeasonsDesc.length; i++) {
+      const fallbackGames = await getFinishedTeamGames(allSeasonsDesc[i], team.id);
+      if (fallbackGames.length > 0) {
+        games = fallbackGames;
+        season = allSeasonsDesc[i];
+        isFallbackSeason = true;
+        break;
+      }
+    }
+  }
+
+  const gameIds = games.map((g) => g.id);
+  const opponentIds = Array.from(
+    new Set(
+      games.map((g) => (g.home_team_id === team.id ? g.away_team_id : g.home_team_id))
+    )
+  );
+  const [ownStats, opponentTeams] = await Promise.all([
+    gameIds.length
+      ? supabase.from("team_game_stats").select("efg_pct").eq("team_id", team.id).in("game_id", gameIds)
+      : Promise.resolve({ data: [] as { efg_pct: number | null }[] }),
+    getTeamsById(opponentIds),
+  ]);
+
+  let wins = 0;
+  let losses = 0;
+  let ptsFor = 0;
+  let ptsAgainst = 0;
+  const recentForm: FormEntry[] = [];
+
+  for (const g of games) {
+    const isHome = g.home_team_id === team.id;
+    const pts = isHome ? g.home_score : g.away_score;
+    const oppPts = isHome ? g.away_score : g.home_score;
+    if (pts == null || oppPts == null) continue;
+    const win = pts > oppPts;
+    win ? wins++ : losses++;
+    ptsFor += pts;
+    ptsAgainst += oppPts;
+    const oppId = isHome ? g.away_team_id : g.home_team_id;
+    recentForm.push({
+      gameId: g.id,
+      date: g.date,
+      opponent: opponentTeams.get(oppId) ?? null,
+      isHome,
+      pts,
+      oppPts,
+      win,
+    });
+  }
+
+  const played = wins + losses;
+  const efgVals = (ownStats.data ?? [])
+    .map((s) => s.efg_pct)
+    .filter((v): v is number => v != null);
+
+  return {
+    team,
+    season,
+    isFallbackSeason,
+    record: { wins, losses },
+    ptsForAvg: played > 0 ? ptsFor / played : null,
+    ptsAgainstAvg: played > 0 ? ptsAgainst / played : null,
+    efgAvg: efgVals.length > 0 ? efgVals.reduce((a, b) => a + b, 0) / efgVals.length : null,
+    recentForm: recentForm.slice(-RECENT_FORM_GAMES),
+  };
+}
+
+export async function getMatchupPreview(gameId: number): Promise<MatchupPreview | null> {
+  const { data: game } = await supabase.from("games").select("*").eq("id", gameId).maybeSingle();
+  if (!game) return null;
+
+  const [teamById, { data: predictions }, allSeasonsDesc] = await Promise.all([
+    getTeamsById([game.home_team_id, game.away_team_id]),
+    supabase
+      .from("predictions")
+      .select("*")
+      .eq("game_id", gameId)
+      .order("created_at", { ascending: false })
+      .limit(1),
+    getSeasons(),
+  ]);
+
+  const homeTeam = teamById.get(game.home_team_id);
+  const awayTeam = teamById.get(game.away_team_id);
+  if (!homeTeam || !awayTeam) return null;
+
+  // Partidos ya jugados en la fecha de este encuentro (o hasta "ahora" si es futuro),
+  // para no meter datos del propio partido a predecir en su propio resumen.
+  const cutoffDate = game.date;
+
+  const [home, away] = await Promise.all([
+    buildTeamSummary(game.season, homeTeam, cutoffDate, allSeasonsDesc),
+    buildTeamSummary(game.season, awayTeam, cutoffDate, allSeasonsDesc),
+  ]);
+
+  return {
+    game,
+    home,
+    away,
+    prediction: predictions?.[0] ?? null,
+  };
 }

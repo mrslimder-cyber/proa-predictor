@@ -1,4 +1,5 @@
 import { supabase, Team, TeamRating } from "@/lib/supabase";
+import { TeamInline } from "@/lib/team-logo";
 
 export const revalidate = 300;
 
@@ -77,7 +78,9 @@ export default async function ClasificacionPage() {
                       {i + 1}
                     </span>
                   </td>
-                  <td>{r.team.name}</td>
+                  <td>
+                    <TeamInline teamId={r.team.id} name={r.team.name} size={22} />
+                  </td>
                   <td className="num">{Math.round(r.elo)}</td>
                 </tr>
               ))}

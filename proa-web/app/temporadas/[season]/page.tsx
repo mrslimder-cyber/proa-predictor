@@ -7,6 +7,7 @@ import {
   MIN_FT_ATT_PLAYER,
 } from "@/lib/stats";
 import SeasonSwitcher from "./season-switcher";
+import { TeamInline, TeamLogo } from "@/lib/team-logo";
 
 export const revalidate = 300;
 
@@ -77,9 +78,12 @@ export default async function SeasonPage({
                       <span className={`rank-badge ${rankClass(i)}`}>{i + 1}</span>
                     </td>
                     <td>
-                      <a href={`/temporadas/${encodeURIComponent(season)}/equipos/${row.team.id}`}>
-                        {row.team.name}
-                      </a>
+                      <TeamInline
+                        teamId={row.team.id}
+                        name={row.team.name}
+                        size={22}
+                        href={`/temporadas/${encodeURIComponent(season)}/equipos/${row.team.id}`}
+                      />
                     </td>
                     <td className="num">{row.played}</td>
                     <td className="num">{row.wins}</td>
@@ -112,9 +116,7 @@ export default async function SeasonPage({
                 href={`/temporadas/${encodeURIComponent(season)}/equipos/${row.team.id}`}
                 className="tile team-tile"
               >
-                <div className="team-badge">
-                  {row.team.name.slice(0, 2).toUpperCase()}
-                </div>
+                <TeamLogo teamId={row.team.id} name={row.team.name} size={34} />
                 <div>
                   <div className="tile-title" style={{ fontSize: 14 }}>
                     {row.team.name}
@@ -142,6 +144,7 @@ export default async function SeasonPage({
             key: t.team.id,
             rank: i,
             primary: t.team.name,
+            teamId: t.team.id,
             secondary: `${t.games} partidos`,
             value: t.avg.toFixed(1),
             unit: "pts",
@@ -154,6 +157,7 @@ export default async function SeasonPage({
             key: p.playerId,
             rank: i,
             primary: p.playerName,
+            teamId: p.team?.id,
             secondary: `${p.team?.name ?? "—"} · ${p.games} PJ`,
             value: p.avg.toFixed(1),
             unit: "pts",
@@ -166,6 +170,7 @@ export default async function SeasonPage({
             key: t.team.id,
             rank: i,
             primary: t.team.name,
+            teamId: t.team.id,
             secondary: `${t.games} partidos`,
             value: (t.pct * 100).toFixed(1),
             unit: "%",
@@ -178,6 +183,7 @@ export default async function SeasonPage({
             key: p.playerId,
             rank: i,
             primary: p.playerName,
+            teamId: p.team?.id,
             secondary: `${p.team?.name ?? "—"} · ${p.games} PJ`,
             value: p.pct != null ? (p.pct * 100).toFixed(1) : "—",
             unit: "%",
@@ -199,6 +205,7 @@ function LeaderPanel({
     key: number;
     rank: number;
     primary: string;
+    teamId?: number;
     secondary: string;
     value: string;
     unit: string;
@@ -214,6 +221,9 @@ function LeaderPanel({
           {items.map((it) => (
             <li key={it.key} className="leader-row">
               <span className={`rank-badge ${rankClass(it.rank)}`}>{it.rank + 1}</span>
+              {it.teamId != null && (
+                <TeamLogo teamId={it.teamId} name={it.primary} size={26} />
+              )}
               <div className="leader-name">
                 <div className="primary">{it.primary}</div>
                 <div className="secondary">{it.secondary}</div>

@@ -1,4 +1,5 @@
 import { supabase, Game, Team, Prediction } from "@/lib/supabase";
+import { TeamLogo } from "@/lib/team-logo";
 
 export const revalidate = 300; // refresca cada 5 min
 
@@ -9,10 +10,17 @@ type Row = Game & {
 };
 
 async function getUpcoming(): Promise<Row[]> {
+  // OJO: filtramos por fecha >= hoy además de por status='scheduled'.
+  // Sin esto, algún partido antiguo de una temporada ya acabada que se
+  // quedó sin resultado cargado (p. ej. porque el boxscore nunca se pudo
+  // scrapear) aparece como "próximo partido" y se cuela el primero de la
+  // lista, rompiendo el orden cronológico real.
+  const todayIso = new Date().toISOString();
   const { data: games } = await supabase
     .from("games")
     .select("*")
     .eq("status", "scheduled")
+    .gte("date", todayIso)
     .order("date", { ascending: true })
     .limit(20);
 
@@ -64,10 +72,11 @@ export default async function HomePage() {
         <h1 className="page-title">Próximos partidos</h1>
         <p className="page-sub">
           Predicciones del modelo para los próximos {rows.length} encuentros de la Pro A.
+          Haz clic en un partido para ver el resumen de ambos equipos.
         </p>
       </div>
       {rows.map((row) => (
-        <div className="panel" key={row.id}>
+        <a className="panel game-link" key={row.id} href={`/partidos/${row.id}`}>
           <div className="meta-row">
             <span>
               {new Date(row.date).toLocaleDateString("es-ES", {
@@ -80,10 +89,14 @@ export default async function HomePage() {
           </div>
 
           <div className="matchup">
-            <div className="team-name">{row.home?.name ?? "Equipo local"}</div>
+            <div className="matchup-team">
+              {row.home && <TeamLogo teamId={row.home.id} name={row.home.name} size={26} />}
+              <div className="team-name">{row.home?.name ?? "Equipo local"}</div>
+            </div>
             <div className="vs">vs</div>
-            <div className="team-name away">
-              {row.away?.name ?? "Equipo visitante"}
+            <div className="matchup-team away">
+              {row.away && <TeamLogo teamId={row.away.id} name={row.away.name} size={26} />}
+              <div className="team-name away">{row.away?.name ?? "Equipo visitante"}</div>
             </div>
           </div>
 
@@ -119,7 +132,7 @@ export default async function HomePage() {
               Sin predicción todavía
             </div>
           )}
-        </div>
+        </a>
       ))}
     </div>
   );

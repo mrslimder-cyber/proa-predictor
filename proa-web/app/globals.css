@@ -455,6 +455,102 @@ select.season-select {
 
 footer { margin-top: 40px; font-size: 12px; color: var(--chalk-dim); text-align: center; }
 
+/* ---------- Logos de equipo en línea ---------- */
+
+.team-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.team-inline span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- Tarjeta de partido clicable (home) ---------- */
+
+a.panel.game-link {
+  display: block;
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+a.panel.game-link:hover {
+  transform: translateY(-2px);
+  border-color: var(--amber-dim);
+  background: var(--panel-hover);
+}
+
+.matchup-team {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.matchup-team.away { flex-direction: row-reverse; text-align: right; }
+.matchup-team .team-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------- Bolitas de forma reciente (W/L) ---------- */
+
+.form-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.form-bubble {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Oswald', sans-serif;
+  font-weight: 700;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.form-bubble.win { background: var(--win-soft); color: var(--win); }
+.form-bubble.loss { background: var(--loss-soft); color: var(--loss); }
+
+/* ---------- Página de resumen de partido ---------- */
+
+.matchup-hero {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 18px;
+  text-align: center;
+  margin: 10px 0 6px;
+}
+.matchup-hero-team {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+.matchup-hero-team .name { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 18px; }
+.matchup-hero-vs {
+  font-family: 'Oswald', sans-serif;
+  color: var(--chalk-dim);
+  font-size: 13px;
+  text-transform: uppercase;
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+@media (max-width: 640px) {
+  .summary-grid { grid-template-columns: 1fr; }
+  .matchup-hero { grid-template-columns: 1fr; gap: 10px; }
+  .matchup-hero-vs { order: 2; }
+}
+
+.fallback-note {
+  font-size: 11.5px;
+  color: var(--chalk-dimmer);
+  margin-top: 8px;
+  font-style: italic;
+}
+
 @media (max-width: 640px) {
   .page-title { font-size: 24px; }
   .team-header h1 { font-size: 21px; }

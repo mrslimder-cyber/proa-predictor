@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { getTeamDetail, getSeasonTeams, MIN_GAMES_PLAYER, MIN_FT_ATT_PLAYER } from "@/lib/stats";
 import { PointsTrendChart, TopScorersChart } from "./team-charts";
 import TeamSwitcher from "./team-switcher";
+import { TeamLogo } from "@/lib/team-logo";
 import type { RosterRow } from "@/lib/stats";
 
 export const revalidate = 300;
@@ -39,7 +40,7 @@ export default async function TeamDetailPage({
       </div>
 
       <div className="team-header">
-        <div className="team-badge">{team.name.slice(0, 2).toUpperCase()}</div>
+        <TeamLogo teamId={team.id} name={team.name} size={52} />
         <div>
           <h1>{team.name}</h1>
           <div className="team-header-sub">
@@ -88,6 +89,27 @@ export default async function TeamDetailPage({
           )}
         </div>
       </div>
+
+      {/* ---------- Últimos resultados ---------- */}
+      {gameLog.length > 0 && (
+        <div className="panel">
+          <div className="section-title">
+            <span className="dot" /> Últimos resultados
+          </div>
+          <div className="form-row">
+            {gameLog.slice(-10).map((g) => (
+              <a
+                key={g.gameId}
+                href={`/partidos/${g.gameId}`}
+                className={`form-bubble ${g.win ? "win" : "loss"}`}
+                title={`${g.isHome ? "vs" : "@"} ${g.opponent}: ${g.pts}-${g.oppPts}`}
+              >
+                {g.win ? "W" : "L"}
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ---------- Gráficos ---------- */}
       {gameLog.length > 0 && (
