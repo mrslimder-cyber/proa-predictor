@@ -29,6 +29,8 @@ export default async function SeasonPage({
     getSeasonLeaders(season),
   ]);
 
+  const isPreseason = standings.length > 0 && standings.every((r) => r.played === 0);
+
   return (
     <div>
       <div className="breadcrumb">
@@ -45,6 +47,12 @@ export default async function SeasonPage({
         <p className="page-sub">
           Clasificación real, líderes estadísticos y detalle por equipo.
         </p>
+        {isPreseason && (
+          <p className="page-sub" style={{ color: "var(--amber)", marginTop: 4 }}>
+            Pretemporada: todavía no se ha jugado ningún partido, la tabla muestra
+            los equipos inscritos con 0-0.
+          </p>
+        )}
       </div>
 
       {/* ---------- Clasificación ---------- */}

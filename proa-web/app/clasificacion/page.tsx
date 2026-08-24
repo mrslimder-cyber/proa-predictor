@@ -26,6 +26,24 @@ async function getRanking(): Promise<{ ranked: Ranked[]; season: string | null }
     activeTeamIds.add(g.home_team_id);
     activeTeamIds.add(g.away_team_id);
   }
+
+  // Si la temporada más reciente todavía no tiene ni calendario publicado
+  // (0 filas en `games`), caemos a la temporada anterior más reciente que
+  // sí tenga equipos, para no dejar la página vacía en pretemporada.
+  if (activeTeamIds.size === 0) {
+    for (let i = 1; i < seasons.length; i++) {
+      const { data: fallbackGames } = await supabase
+        .from("games")
+        .select("home_team_id, away_team_id")
+        .eq("season", seasons[i])
+        .range(0, 999);
+      for (const g of fallbackGames ?? []) {
+        activeTeamIds.add(g.home_team_id);
+        activeTeamIds.add(g.away_team_id);
+      }
+      if (activeTeamIds.size > 0) break;
+    }
+  }
   if (activeTeamIds.size === 0) return { ranked: [], season };
 
   const { data: teams } = await supabase

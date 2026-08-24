@@ -101,13 +101,51 @@ export type StandingRow = {
   winPct: number;
 };
 
-export async function getStandings(season: string): Promise<StandingRow[]> {
-  const games = await getSeasonGames(season);
-  if (games.length === 0) return [];
+// Todos los team_id que aparecen en `games` de una temporada, sin filtrar
+// por status. A diferencia de getSeasonGames (que solo trae partidos
+// "final"), esto sirve para saber quién compite esta temporada aunque
+// todavía no se haya jugado ni un partido (calendario ya publicado, 0
+// finalizados).
+async function getSeasonAllTeamIds(season: string): Promise<number[]> {
+  const { data } = await supabase
+    .from("games")
+    .select("home_team_id, away_team_id")
+    .eq("season", season)
+    .range(0, 999);
+  const ids = new Set<number>();
+  for (const g of data ?? []) {
+    ids.add(g.home_team_id);
+    ids.add(g.away_team_id);
+  }
+  return Array.from(ids);
+}
 
-  const teamIds = Array.from(
+export async function getStandings(season: string): Promise<StandingRow[]> {
+  const games = await getSeasonGames(season); // solo partidos "final"
+
+  // Cascada para decidir qué equipos mostrar, de más a menos preciso:
+  // 1) equipos con partidos ya jugados esta temporada
+  // 2) equipos del calendario de esta temporada (0 jugados todavía)
+  // 3) roster de la temporada anterior más reciente (calendario aún sin publicar)
+  let teamIds = Array.from(
     new Set(games.flatMap((g) => [g.home_team_id, g.away_team_id]))
   );
+
+  if (teamIds.length === 0) {
+    teamIds = await getSeasonAllTeamIds(season);
+  }
+
+  if (teamIds.length === 0) {
+    const allSeasons = await getSeasons();
+    const idx = allSeasons.indexOf(season);
+    for (let i = idx + 1; i < allSeasons.length; i++) {
+      teamIds = await getSeasonAllTeamIds(allSeasons[i]);
+      if (teamIds.length > 0) break;
+    }
+  }
+
+  if (teamIds.length === 0) return [];
+
   const teamById = await getTeamsById(teamIds);
 
   const acc = new Map<
@@ -120,6 +158,10 @@ export async function getStandings(season: string): Promise<StandingRow[]> {
     }
     return acc.get(id)!;
   };
+
+  // Todo equipo de la temporada entra en la tabla desde el principio,
+  // aunque todavía no tenga ningún partido jugado (queda en 0-0).
+  for (const id of teamIds) ensure(id);
 
   for (const g of games) {
     if (g.home_score == null || g.away_score == null) continue;
@@ -156,7 +198,14 @@ export async function getStandings(season: string): Promise<StandingRow[]> {
     });
   }
 
-  rows.sort((a, b) => b.winPct - a.winPct || b.diff - a.diff);
+  // Empate a 0-0 (pretemporada): orden alfabético como desempate estable,
+  // en vez de depender del orden de llegada de la query.
+  rows.sort(
+    (a, b) =>
+      b.winPct - a.winPct ||
+      b.diff - a.diff ||
+      a.team.name.localeCompare(b.team.name)
+  );
   return rows;
 }
 
