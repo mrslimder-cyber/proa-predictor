@@ -1,6 +1,8 @@
 import { notFound } from "next/navigation";
-import { getMatchupPreview, MatchupTeamSummary } from "@/lib/stats";
+import { getMatchupPreview, getGameFullBoxscore, MatchupTeamSummary } from "@/lib/stats";
 import { TeamLogo } from "@/lib/team-logo";
+import { BoxscorePanel } from "./boxscore-panel";
+import { PlayerBoxscoreTable } from "./player-boxscore-table";
 
 export const revalidate = 300;
 
@@ -12,7 +14,10 @@ export default async function GameSummaryPage({
   const gameId = Number(params.gameId);
   if (Number.isNaN(gameId)) notFound();
 
-  const preview = await getMatchupPreview(gameId);
+  const [preview, boxscore] = await Promise.all([
+    getMatchupPreview(gameId),
+    getGameFullBoxscore(gameId),
+  ]);
   if (!preview) notFound();
 
   const { game, home, away, prediction } = preview;
@@ -99,6 +104,25 @@ export default async function GameSummaryPage({
         <TeamSummaryCard summary={home} />
         <TeamSummaryCard summary={away} />
       </div>
+
+      {/* ---------- Boxscore de equipo (resaltado en verde) + resumen ---------- */}
+      {isFinal && (
+        <BoxscorePanel
+          homeStats={boxscore.home.stats}
+          awayStats={boxscore.away.stats}
+          homeName={home.team.name}
+          awayName={away.team.name}
+          insight={boxscore.insight}
+        />
+      )}
+
+      {/* ---------- Boxscore de jugadores, ambos equipos ---------- */}
+      {isFinal && (boxscore.homePlayers.length > 0 || boxscore.awayPlayers.length > 0) && (
+        <div className="summary-grid">
+          <PlayerBoxscoreTable teamName={home.team.name} players={boxscore.homePlayers} />
+          <PlayerBoxscoreTable teamName={away.team.name} players={boxscore.awayPlayers} />
+        </div>
+      )}
     </div>
   );
 }

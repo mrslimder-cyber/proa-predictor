@@ -1,0 +1,31 @@
+Datos sintéticos insertados: partido 90001 (Equipo Local 88 - 79 Equipo Visitante).
+
+Pesos cargados desde feature_importance_v1.csv: 29 claves base encontradas.
+Top 5 pesos combinados (home_+away_ sumados):
+  elo: 0.0574
+  efg_for_r5: 0.0453
+  ft_rate_r3: 0.0445
+  orb_pct_r3: 0.0434
+  margin_r10: 0.0431
+
+--- Corriendo generate_all() ---
+1 partidos finalizados sin insight todavía (de 1 finalizados en total).
+1 insights nuevos guardados en game_insights.
+
+=== RESULTADO ===
+
+Partido 90001  ->  equipo ganador id=9001
+Resumen generado:
+  Equipo Local (ejemplo) ganó a Equipo Visitante (ejemplo) apoyándose sobre todo en: pérdidas cometidas (9.0 vs 15.0); puntos anotados (88.0 vs 79.0); rebotes totales (40.0 vs 33.0). Aun así, cedió terreno en ratio de tiros libres.
+
+Top 5 factores clave (ordenados por relevancia):
+  - Pérdidas cometidas             local=9.0     visitante=15.0    favorece=home   peso_modelo=0.0388 score=0.23274
+  - Puntos anotados                local=88.0    visitante=79.0    favorece=home   peso_modelo=0.0100 score=0.09000
+  - Rebotes totales                local=40.0    visitante=33.0    favorece=home   peso_modelo=0.0100 score=0.07000
+  - Asistencias                    local=19.0    visitante=14.0    favorece=home   peso_modelo=0.0100 score=0.05000
+  - Robos de balón                 local=8.0     visitante=5.0     favorece=home   peso_modelo=0.0100 score=0.03000
+
+[OK] Insight persistido correctamente en game_insights (verificado por consulta a la BD).
+0 partidos finalizados sin insight todavía (de 1 finalizados en total).
+0 insights nuevos guardados en game_insights.
+[OK] Idempotencia verificada: la segunda ejecución no generó duplicados.

@@ -5,6 +5,7 @@ import {
   TeamGameStats,
   PlayerGameStats,
   Prediction,
+  GameInsightRow,
 } from "@/lib/supabase";
 
 // Nº mínimo de partidos jugados para poder entrar en un ranking individual.
@@ -533,6 +534,134 @@ export async function getTeamDetail(
 export async function getSeasonTeams(season: string): Promise<Team[]> {
   const standings = await getStandings(season);
   return standings.map((s) => s.team);
+}
+
+// ---------- NUEVO: listado de partidos jugados de una temporada ----------
+
+export type PlayedGameRow = {
+  gameId: number;
+  date: string;
+  matchday: number | null;
+  home: Team | null;
+  away: Team | null;
+  homeScore: number;
+  awayScore: number;
+};
+
+/**
+ * Todos los partidos ya finalizados de una temporada, más recientes
+ * primero. Pensado para el panel "Partidos jugados" dentro de
+ * /temporadas/[season], cada fila enlaza a /partidos/[gameId].
+ */
+export async function getSeasonFinishedGames(season: string): Promise<PlayedGameRow[]> {
+  const games = await getSeasonGames(season); // ya filtra status = 'final'
+  if (games.length === 0) return [];
+
+  const teamIds = Array.from(new Set(games.flatMap((g) => [g.home_team_id, g.away_team_id])));
+  const teamById = await getTeamsById(teamIds);
+
+  const rows: PlayedGameRow[] = games
+    .filter((g) => g.home_score != null && g.away_score != null)
+    .map((g) => ({
+      gameId: g.id,
+      date: g.date,
+      matchday: g.matchday,
+      home: teamById.get(g.home_team_id) ?? null,
+      away: teamById.get(g.away_team_id) ?? null,
+      homeScore: g.home_score as number,
+      awayScore: g.away_score as number,
+    }));
+
+  rows.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  return rows;
+}
+
+/** Último partido finalizado de una temporada (más reciente por fecha). */
+export async function getLastFinishedGame(season: string): Promise<PlayedGameRow | null> {
+  const rows = await getSeasonFinishedGames(season);
+  return rows[0] ?? null;
+}
+
+// ---------- NUEVO: boxscore completo de un partido (equipo + jugadores) ----------
+
+export type TeamBoxscore = {
+  team: Team | null;
+  stats: TeamGameStats | null;
+};
+
+export type PlayerBoxscoreRow = PlayerGameStats & { playerName: string };
+
+export type GameFullBoxscore = {
+  game: Game | null;
+  home: TeamBoxscore;
+  away: TeamBoxscore;
+  homePlayers: PlayerBoxscoreRow[];
+  awayPlayers: PlayerBoxscoreRow[];
+  insight: GameInsightRow | null;
+};
+
+/**
+ * Todo lo necesario para pintar la página de un partido concreto:
+ * stats de equipo de ambos lados (para el boxscore con celdas resaltadas),
+ * stats de cada jugador de ambos equipos, y el insight ("por qué ganó")
+ * si ya se generó para ese partido.
+ */
+export async function getGameFullBoxscore(gameId: number): Promise<GameFullBoxscore> {
+  const { data: game } = await supabase.from("games").select("*").eq("id", gameId).maybeSingle();
+
+  if (!game) {
+    return {
+      game: null,
+      home: { team: null, stats: null },
+      away: { team: null, stats: null },
+      homePlayers: [],
+      awayPlayers: [],
+      insight: null,
+    };
+  }
+
+  const [{ data: teamStats }, { data: playerStats }, { data: insight }, teamById] = await Promise.all([
+    supabase.from("team_game_stats").select("*").eq("game_id", gameId),
+    supabase.from("player_game_stats").select("*").eq("game_id", gameId),
+    supabase
+      .from("game_insights")
+      .select("*")
+      .eq("game_id", gameId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    getTeamsById([game.home_team_id, game.away_team_id]),
+  ]);
+
+  const homeStats = (teamStats ?? []).find((s) => s.team_id === game.home_team_id) ?? null;
+  const awayStats = (teamStats ?? []).find((s) => s.team_id === game.away_team_id) ?? null;
+
+  const homePlayers = (playerStats ?? [])
+    .filter((p) => p.team_id === game.home_team_id)
+    .map((p) => ({ ...p, playerName: p.player_name }))
+    .sort((a, b) => (b.pts ?? 0) - (a.pts ?? 0));
+
+  const awayPlayers = (playerStats ?? [])
+    .filter((p) => p.team_id === game.away_team_id)
+    .map((p) => ({ ...p, playerName: p.player_name }))
+    .sort((a, b) => (b.pts ?? 0) - (a.pts ?? 0));
+
+  return {
+    game,
+    home: { team: teamById.get(game.home_team_id) ?? null, stats: homeStats },
+    away: { team: teamById.get(game.away_team_id) ?? null, stats: awayStats },
+    homePlayers,
+    awayPlayers,
+    insight: insight
+      ? {
+          ...insight,
+          key_factors:
+            typeof insight.key_factors === "string"
+              ? JSON.parse(insight.key_factors)
+              : insight.key_factors,
+        }
+      : null,
+  };
 }
 
 // ---------- Resumen de partido (al hacer clic en un partido) ----------

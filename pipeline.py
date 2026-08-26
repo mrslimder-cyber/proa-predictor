@@ -4,7 +4,9 @@ Pipeline completo, pensado para ejecutarse tras cada jornada:
 1. Ingesta: descarga resultados nuevos y los guarda en la BD.
 2. Entrenamiento: reentrena los modelos con todo el histórico actualizado.
 3. Predicción: genera predicciones para los próximos partidos pendientes.
-4. Gráficos: regenera las visualizaciones de análisis.
+4. Claves de partidos: genera el resumen "por qué ganó" de los partidos
+   ya finalizados que todavía no lo tengan (ver models/game_insights.py).
+5. Gráficos: regenera las visualizaciones de análisis.
 
 Uso manual:
     python pipeline.py
@@ -25,6 +27,7 @@ def run_pipeline():
         ("Ingesta de datos", _step_ingest),
         ("Entrenamiento del modelo", _step_train),
         ("Predicción de próximos partidos", _step_predict),
+        ("Claves de partidos jugados", _step_insights),
         ("Generación de gráficos", _step_charts),
     ]
 
@@ -56,6 +59,11 @@ def _step_train():
 def _step_predict():
     from models.predict import predict_upcoming
     predict_upcoming()
+
+
+def _step_insights():
+    from models.game_insights import generate_all
+    generate_all()
 
 
 def _step_charts():

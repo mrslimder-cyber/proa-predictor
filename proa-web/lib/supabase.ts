@@ -93,3 +93,26 @@ export type PlayerGameStats = {
   ft_made: number | null;
   ft_att: number | null;
 };
+
+// --- NUEVO: claves del partido ("por qué ganó") ---
+
+export type KeyFactor = {
+  stat: string;
+  label: string;
+  home: number;
+  away: number;
+  favors: "home" | "away" | "empate";
+  diff: number;
+  weight: number;
+  score: number;
+};
+
+export type GameInsightRow = {
+  id: number;
+  game_id: number;
+  model_version: string;
+  winner_team_id: number;
+  key_factors: KeyFactor[];
+  summary_text: string;
+  created_at: string;
+};

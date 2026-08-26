@@ -3,6 +3,7 @@ import {
   getSeasons,
   getStandings,
   getSeasonLeaders,
+  getSeasonFinishedGames,
   MIN_GAMES_PLAYER,
   MIN_FT_ATT_PLAYER,
 } from "@/lib/stats";
@@ -24,9 +25,10 @@ export default async function SeasonPage({
   const seasons = await getSeasons();
   if (!seasons.includes(season)) notFound();
 
-  const [standings, leaders] = await Promise.all([
+  const [standings, leaders, playedGames] = await Promise.all([
     getStandings(season),
     getSeasonLeaders(season),
+    getSeasonFinishedGames(season),
   ]);
 
   const isPreseason = standings.length > 0 && standings.every((r) => r.played === 0);
@@ -135,6 +137,79 @@ export default async function SeasonPage({
                 </div>
               </a>
             ))}
+          </div>
+        )}
+      </div>
+
+      {/* ---------- NUEVO: Partidos jugados ---------- */}
+      <div className="panel">
+        <div className="section-title">
+          <span className="dot" /> Partidos jugados ({playedGames.length})
+        </div>
+        {playedGames.length === 0 ? (
+          <p style={{ color: "var(--chalk-dim)", fontSize: 14 }}>
+            Todavía no se ha jugado ningún partido en esta temporada.
+          </p>
+        ) : (
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Local</th>
+                  <th className="num">Marcador</th>
+                  <th>Visitante</th>
+                </tr>
+              </thead>
+              <tbody>
+                {playedGames.map((g) => {
+                  const homeWon = g.homeScore > g.awayScore;
+                  return (
+                    <tr
+                      key={g.gameId}
+                      className="linked"
+                      onClick={undefined}
+                    >
+                      <td style={{ whiteSpace: "nowrap" }}>
+                        <a href={`/partidos/${g.gameId}`}>
+                          {new Date(g.date).toLocaleDateString("es-ES", {
+                            day: "2-digit",
+                            month: "short",
+                          })}
+                        </a>
+                      </td>
+                      <td>
+                        <a href={`/partidos/${g.gameId}`} style={{ display: "block" }}>
+                          <TeamInline
+                            teamId={g.home?.id ?? 0}
+                            name={g.home?.name ?? "Local"}
+                            size={20}
+                            bold={homeWon}
+                          />
+                        </a>
+                      </td>
+                      <td className="num" style={{ whiteSpace: "nowrap" }}>
+                        <a href={`/partidos/${g.gameId}`}>
+                          <span style={{ fontWeight: homeWon ? 700 : 400 }}>{g.homeScore}</span>
+                          {" – "}
+                          <span style={{ fontWeight: !homeWon ? 700 : 400 }}>{g.awayScore}</span>
+                        </a>
+                      </td>
+                      <td>
+                        <a href={`/partidos/${g.gameId}`} style={{ display: "block" }}>
+                          <TeamInline
+                            teamId={g.away?.id ?? 0}
+                            name={g.away?.name ?? "Visitante"}
+                            size={20}
+                            bold={!homeWon}
+                          />
+                        </a>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
       </div>

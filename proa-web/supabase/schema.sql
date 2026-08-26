@@ -1,5 +1,9 @@
 -- Esquema para Supabase (Postgres), espejo exacto de db/models.py
 -- del pipeline en Python. Pégalo en Supabase -> SQL Editor -> Run.
+--
+-- Si ya tienes el esquema anterior aplicado, basta con correr SOLO el
+-- bloque nuevo de `game_insights` al final de este archivo (marcado con
+-- "NUEVO"): el resto es idéntico al que ya tenías.
 
 -- Una fila por equipo (id de Proballers, estable entre temporadas), no
 -- una fila por (equipo, temporada). `season` guarda la última temporada
@@ -102,3 +106,23 @@ as $$
 $$;
 
 grant execute on function public.distinct_seasons() to anon, authenticated;
+
+-- ============================================================
+-- NUEVO: claves del partido ("por qué ganó" + boxscore resaltado)
+-- ============================================================
+-- Una fila por (partido, versión de modelo). key_factors es un array JSON
+-- con cada estadística comparada entre ambos equipos, ordenada de más a
+-- menos relevante según lo que el clasificador aprendió al entrenar.
+create table if not exists game_insights (
+  id serial primary key,
+  game_id integer references games(id),
+  model_version text not null,
+  winner_team_id integer not null,
+  key_factors jsonb not null,
+  summary_text text not null,
+  created_at timestamp default now(),
+  unique (game_id, model_version)
+);
+
+alter table game_insights enable row level security;
+create policy "public read game_insights" on game_insights for select using (true);

@@ -255,6 +255,14 @@ tbody tr { transition: background 0.12s ease; }
 tbody tr.linked { cursor: pointer; }
 tbody tr.linked:hover { background: var(--panel-hover); }
 
+/* NUEVO: celda de estadística ganada por ese equipo en el boxscore de partido */
+td.stat-win {
+  color: var(--win);
+  font-weight: 700;
+  background: var(--win-soft);
+  border-radius: 6px;
+}
+
 .table-scroll { overflow-x: auto; margin: -4px; padding: 4px; }
 .table-scroll table { min-width: 480px; }
 
@@ -342,7 +350,8 @@ tbody tr.linked:hover { background: var(--panel-hover); }
   flex-wrap: wrap;
   margin-bottom: 18px;
 }
-select.season-select {
+select.season-select,
+button.season-select {
   appearance: none;
   background: var(--panel);
   border: 1px solid var(--line);
@@ -357,6 +366,8 @@ select.season-select {
   background-repeat: no-repeat;
   background-position: right 14px center;
 }
+button.season-select { background-image: none; padding: 9px 18px; }
+button.season-select:hover { background: var(--panel-hover); }
 
 /* ---------- Stat leaders ---------- */
 

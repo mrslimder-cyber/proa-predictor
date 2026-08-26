@@ -157,3 +157,32 @@ class Prediction(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     __table_args__ = (UniqueConstraint("game_id", "model_version", name="uq_game_model"),)
+
+
+class GameInsight(Base):
+    """
+    "Claves del partido": para un partido ya finalizado, guarda qué
+    estadísticas explican mejor la victoria (comparando ambos equipos y
+    ponderando por la importancia de features que el propio clasificador
+    aprendió al entrenar) y un resumen en texto listo para mostrar.
+
+    Se genera una vez por partido y por versión de modelo (igual que
+    Prediction), así que si reentrenas con una versión nueva puedes tener
+    varias explicaciones (una por MODEL_VERSION) sin pisar la anterior.
+    """
+    __tablename__ = "game_insights"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    game_id = Column(Integer, ForeignKey("games.id"), nullable=False)
+    model_version = Column(String, nullable=False)
+
+    winner_team_id = Column(Integer, nullable=False)
+    # JSON (string) con la lista de factores clave, ordenados por relevancia:
+    # [{"stat": "efg_pct", "label": "...", "home": 0.52, "away": 0.41,
+    #   "favors": "home", "diff": 0.11, "weight": 0.03, "score": 0.0036}, ...]
+    key_factors = Column(String, nullable=False)
+    summary_text = Column(String, nullable=False)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (UniqueConstraint("game_id", "model_version", name="uq_game_insight_model"),)
