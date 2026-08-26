@@ -142,12 +142,21 @@ def predict_upcoming(save_to_db: bool = True) -> pd.DataFrame:
     if save_to_db:
         with get_session() as session:
             for _, row in df.iterrows():
-                session.merge(Prediction(
-                    game_id=int(row["game_id"]),
-                    model_version=MODEL_VERSION,
-                    home_win_prob=float(row["home_win_prob"]),
-                    predicted_margin=float(row["predicted_margin"]),
-                ))
+                existing = (
+                    session.query(Prediction)
+                    .filter_by(game_id=int(row["game_id"]), model_version=MODEL_VERSION)
+                    .one_or_none()
+                )
+                if existing:
+                    existing.home_win_prob = float(row["home_win_prob"])
+                    existing.predicted_margin = float(row["predicted_margin"])
+                else:
+                    session.add(Prediction(
+                        game_id=int(row["game_id"]),
+                        model_version=MODEL_VERSION,
+                        home_win_prob=float(row["home_win_prob"]),
+                        predicted_margin=float(row["predicted_margin"]),
+                    ))
         print(f"{len(df)} predicciones guardadas en la base de datos.")
 
     return df[["game_id", "home_team_id", "away_team_id", "date", "home_win_prob", "predicted_margin"]]
