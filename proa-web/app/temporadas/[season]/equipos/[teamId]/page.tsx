@@ -1,5 +1,4 @@
 import { notFound } from "next/navigation";
-import { getTeamDetail, getSeasonTeams, MIN_GAMES_PLAYER, MIN_FT_ATT_PLAYER } from "@/lib/stats";
 import { PointsTrendChart, TopScorersChart } from "./team-charts";
 import TeamSwitcher from "./team-switcher";
 import { TeamLogo } from "@/lib/team-logo";
