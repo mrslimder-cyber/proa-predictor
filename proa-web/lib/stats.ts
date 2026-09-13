@@ -576,6 +576,35 @@ export async function getSeasonFinishedGames(season: string): Promise<PlayedGame
   return rows;
 }
 
+async function getSeasonTeamCount(season: string): Promise<number> {
+  const { data } = await supabase
+    .from("games")
+    .select("home_team_id, away_team_id")
+    .eq("season", season)
+    .range(0, 999);
+  const ids = new Set<number>();
+  for (const g of data ?? []) {
+    ids.add(g.home_team_id);
+    ids.add(g.away_team_id);
+  }
+  return ids.size;
+}
+
+/**
+ * Solo la última jornada jugada de la temporada: toma los N partidos
+ * finalizados más recientes, con N = nº de equipos / 2 (tamaño de una
+ * jornada de liga). Si esa jornada quedó repartida en varios días de
+ * calendario (p. ej. viernes + sábado), esto la completa igualmente
+ * porque no cortamos por fecha exacta, sino por cantidad de partidos.
+ */
+export async function getLastJornadaGames(season: string): Promise<PlayedGameRow[]> {
+  const allFinished = await getSeasonFinishedGames(season); // ya viene ordenado, más reciente primero
+  if (allFinished.length === 0) return [];
+  const teamCount = await getSeasonTeamCount(season);
+  const gamesPerJornada = Math.max(1, Math.floor(teamCount / 2));
+  return allFinished.slice(0, gamesPerJornada);
+}
+
 /** Último partido finalizado de una temporada (más reciente por fecha). */
 export async function getLastFinishedGame(season: string): Promise<PlayedGameRow | null> {
   const rows = await getSeasonFinishedGames(season);
@@ -832,4 +861,166 @@ export async function getMatchupPreview(gameId: number): Promise<MatchupPreview 
     away,
     prediction: predictions?.[0] ?? null,
   };
+}
+
+// ---------- Evolución del modelo: predicción vs. resultado real ----------
+
+export type EvolutionJornada = {
+  label: string;
+  games: number;
+  accuracy: number; // 0-1
+  avgMarginError: number;
+  avgPredictedMargin: number;
+  avgActualMargin: number;
+};
+
+export async function getModelEvolution(season: string): Promise<EvolutionJornada[]> {
+  const { data: games } = await supabase
+    .from("games")
+    .select("id,home_team_id,away_team_id,home_score,away_score")
+    .eq("season", season)
+    .eq("status", "final")
+    .order("date", { ascending: true })
+    .range(0, 4999);
+  if (!games || games.length === 0) return [];
+
+  const gameIds = games.map((g) => g.id);
+  const { data: predictions } = await supabase
+    .from("predictions")
+    .select("game_id,home_win_prob,predicted_margin,created_at")
+    .in("game_id", gameIds)
+    .order("created_at", { ascending: false });
+
+  // Puede haber >1 predicción por partido (reentrenos); nos quedamos con
+  // la más reciente guardada ANTES de que el partido se jugara.
+  const predByGame = new Map<number, { home_win_prob: number; predicted_margin: number | null }>();
+  for (const p of predictions ?? []) {
+    if (!predByGame.has(p.game_id)) predByGame.set(p.game_id, p);
+  }
+
+  const rows = games
+    .filter((g) => predByGame.has(g.id) && g.home_score != null && g.away_score != null)
+    .map((g) => {
+      const pred = predByGame.get(g.id)!;
+      const actualMargin = g.home_score! - g.away_score!;
+      const predictedHomeWin = pred.home_win_prob >= 0.5 ? 1 : 0;
+      const actualHomeWin = actualMargin > 0 ? 1 : 0;
+      return {
+        correct: predictedHomeWin === actualHomeWin ? 1 : 0,
+        marginError: pred.predicted_margin != null ? Math.abs(pred.predicted_margin - actualMargin) : null,
+        predictedMargin: pred.predicted_margin,
+        actualMargin,
+      };
+    });
+  if (rows.length === 0) return [];
+
+  // Igual que en la home: aproximamos "jornada" en bloques de nº de
+  // equipos/2, ya que Proballers no publica un número de jornada explícito.
+  const teamsSeen = new Set<number>();
+  for (const g of games) {
+    teamsSeen.add(g.home_team_id);
+    teamsSeen.add(g.away_team_id);
+  }
+  const blockSize = Math.max(1, Math.floor(teamsSeen.size / 2));
+
+  const jornadas: EvolutionJornada[] = [];
+  for (let i = 0; i < rows.length; i += blockSize) {
+    const chunk = rows.slice(i, i + blockSize);
+    const withMargin = chunk.filter((r) => r.marginError != null);
+    jornadas.push({
+      label: `J${jornadas.length + 1}`,
+      games: chunk.length,
+      accuracy: chunk.reduce((a, r) => a + r.correct, 0) / chunk.length,
+      avgMarginError: withMargin.length
+        ? withMargin.reduce((a, r) => a + (r.marginError ?? 0), 0) / withMargin.length
+        : 0,
+      avgPredictedMargin: withMargin.length
+        ? withMargin.reduce((a, r) => a + (r.predictedMargin ?? 0), 0) / withMargin.length
+        : 0,
+      avgActualMargin: chunk.reduce((a, r) => a + r.actualMargin, 0) / chunk.length,
+    });
+  }
+  return jornadas;
+}
+
+// ---------- Ritmo y ratings avanzados ----------
+
+function estimatePossessions(s: {
+  fg2_att: number | null; fg3_att: number | null;
+  oreb: number | null; tov: number | null; ft_att: number | null;
+}): number | null {
+  if (s.fg2_att == null || s.fg3_att == null || s.oreb == null || s.tov == null || s.ft_att == null) return null;
+  return (s.fg2_att + s.fg3_att) - s.oreb + s.tov + 0.44 * s.ft_att;
+}
+
+export type TeamAdvancedRow = {
+  team: Team;
+  games: number;
+  ptsAvg: number;
+  possessionsPerGame: number;
+  pointsPerPossession: number;
+  offRating: number; // pts por 100 posesiones propias
+  defRating: number; // pts concedidos por 100 posesiones rivales
+  netRating: number;
+};
+
+/** Estadísticas avanzadas de TODOS los equipos de una temporada, en una pasada. */
+export async function getSeasonAdvancedStats(season: string): Promise<TeamAdvancedRow[]> {
+  const games = await getSeasonGames(season);
+  const gameIds = games.map((g) => g.id);
+  if (gameIds.length === 0) return [];
+
+  const teamStats = await getTeamStatsForGames(gameIds);
+  const byGame = new Map<number, TeamGameStats[]>();
+  for (const s of teamStats) {
+    const arr = byGame.get(s.game_id) ?? [];
+    arr.push(s);
+    byGame.set(s.game_id, arr);
+  }
+
+  const teamIds = Array.from(new Set(teamStats.map((s) => s.team_id)));
+  const teamById = await getTeamsById(teamIds);
+
+  const acc = new Map<number, { games: number; pts: number; poss: number; oppPts: number; oppPoss: number }>();
+  const ensure = (id: number) => {
+    if (!acc.has(id)) acc.set(id, { games: 0, pts: 0, poss: 0, oppPts: 0, oppPoss: 0 });
+    return acc.get(id)!;
+  };
+
+  for (const g of games) {
+    const pair = byGame.get(g.id);
+    if (!pair || pair.length < 2) continue;
+    const [a, b] = pair;
+    for (const [own, opp] of [[a, b], [b, a]] as const) {
+      const ownPoss = estimatePossessions(own);
+      const oppPoss = estimatePossessions(opp);
+      if (ownPoss == null || oppPoss == null) continue;
+      const e = ensure(own.team_id);
+      e.games += 1;
+      e.pts += own.pts ?? 0;
+      e.poss += ownPoss;
+      e.oppPts += opp.pts ?? 0;
+      e.oppPoss += oppPoss;
+    }
+  }
+
+  const rows: TeamAdvancedRow[] = [];
+  for (const [teamId, e] of acc.entries()) {
+    const team = teamById.get(teamId);
+    if (!team || e.games === 0 || e.poss === 0 || e.oppPoss === 0) continue;
+    const offRating = (e.pts / e.poss) * 100;
+    const defRating = (e.oppPts / e.oppPoss) * 100;
+    rows.push({
+      team,
+      games: e.games,
+      ptsAvg: e.pts / e.games,
+      possessionsPerGame: e.poss / e.games,
+      pointsPerPossession: e.pts / e.poss,
+      offRating,
+      defRating,
+      netRating: offRating - defRating,
+    });
+  }
+  rows.sort((a, b) => b.netRating - a.netRating);
+  return rows;
 }

@@ -3,7 +3,8 @@ import {
   getSeasons,
   getStandings,
   getSeasonLeaders,
-  getSeasonFinishedGames,
+  getSeasonFinishedGames
+  getLastJornadaGames,
   MIN_GAMES_PLAYER,
   MIN_FT_ATT_PLAYER,
 } from "@/lib/stats";
@@ -25,11 +26,12 @@ export default async function SeasonPage({
   const seasons = await getSeasons();
   if (!seasons.includes(season)) notFound();
 
-  const [standings, leaders, playedGames] = await Promise.all([
-    getStandings(season),
-    getSeasonLeaders(season),
-    getSeasonFinishedGames(season),
-  ]);
+  const [standings, leaders, lastJornada, allPlayedGames] = await Promise.all([
+  getStandings(season),
+  getSeasonLeaders(season),
+  getLastJornadaGames(season),
+  getSeasonFinishedGames(season),
+]);
 
   const isPreseason = standings.length > 0 && standings.every((r) => r.played === 0);
 

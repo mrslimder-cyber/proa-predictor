@@ -6,6 +6,7 @@ const LINKS = [
   { href: "/", label: "Próximos partidos" },
   { href: "/temporadas", label: "Temporadas" },
   { href: "/clasificacion", label: "Ranking Elo" },
+  { href: "/evolucion", label: "Evolución" },
 ];
 
 export default function NavLinks() {
