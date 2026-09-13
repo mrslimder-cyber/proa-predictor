@@ -3,7 +3,7 @@ import {
   getSeasons,
   getStandings,
   getSeasonLeaders,
-  getSeasonFinishedGames
+  getSeasonFinishedGames,
   getLastJornadaGames,
   MIN_GAMES_PLAYER,
   MIN_FT_ATT_PLAYER,
