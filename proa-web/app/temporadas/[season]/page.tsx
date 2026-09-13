@@ -129,7 +129,7 @@ export default async function SeasonPage({
         ) : (
           <div className="card-grid">
             {standings.map((row) => (
-              
+              <a
                 key={row.team.id}
                 href={`/temporadas/${encodeURIComponent(season)}/equipos/${row.team.id}`}
                 className="tile team-tile"
@@ -264,7 +264,7 @@ export default async function SeasonPage({
         ) : (
           <div className="card-grid">
             {jornadas.map((j) => (
-              
+              <a
                 key={j.number}
                 href={`/temporadas/${encodeURIComponent(season)}/jornada/${j.number}`}
                 className="tile"
