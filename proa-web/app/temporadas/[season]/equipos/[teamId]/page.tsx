@@ -18,7 +18,7 @@ export default async function TeamDetailPage({
   const teamId = Number(params.teamId);
   if (Number.isNaN(teamId)) notFound();
 
-  const [detail, seasonTeams] = await Promise.all([
+  const [detail, seasonTeams, advancedStats] = await Promise.all([
     getTeamDetail(season, teamId),
     getSeasonTeams(season),
     getSeasonAdvancedStats(season),
