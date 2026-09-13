@@ -146,9 +146,9 @@ export default async function SeasonPage({
       {/* ---------- NUEVO: Partidos jugados ---------- */}
       <div className="panel">
         <div className="section-title">
-          <span className="dot" /> Partidos jugados ({playedGames.length})
+          <span className="dot" /> Partidos jugados ({allPlayedGames.length})
         </div>
-        {playedGames.length === 0 ? (
+        {allPlayedGames.length === 0 ? (
           <p style={{ color: "var(--chalk-dim)", fontSize: 14 }}>
             Todavía no se ha jugado ningún partido en esta temporada.
           </p>
@@ -164,7 +164,7 @@ export default async function SeasonPage({
                 </tr>
               </thead>
               <tbody>
-                {playedGames.map((g) => {
+                {allPlayedGames.map((g) => {
                   const homeWon = g.homeScore > g.awayScore;
                   return (
                     <tr
