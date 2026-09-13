@@ -65,6 +65,66 @@ export default async function SeasonPage({
         )}
       </div>
 
+      {/* ---------- Líderes ---------- */}
+      <div className="section-title" style={{ marginTop: 26, marginBottom: 12 }}>
+        <span className="dot" /> Líderes de la temporada
+      </div>
+
+      <div className="leader-grid">
+        <LeaderPanel
+          title="Puntos por partido · Equipos"
+          empty="Sin datos suficientes todavía."
+          items={leaders.teamPoints.map((t, i) => ({
+            key: t.team.id,
+            rank: i,
+            primary: t.team.name,
+            teamId: t.team.id,
+            secondary: `${t.games} partidos`,
+            value: t.avg.toFixed(1),
+            unit: "pts",
+          }))}
+        />
+        <LeaderPanel
+          title={`Puntos por partido · Jugadores (mín. ${MIN_GAMES_PLAYER} PJ)`}
+          empty="Ningún jugador cumple el mínimo de partidos todavía."
+          items={leaders.playerPoints.map((p, i) => ({
+            key: p.playerId,
+            rank: i,
+            primary: p.playerName,
+            teamId: p.team?.id,
+            secondary: `${p.team?.name ?? "—"} · ${p.games} PJ`,
+            value: p.avg.toFixed(1),
+            unit: "pts",
+          }))}
+        />
+        <LeaderPanel
+          title="% Tiros libres · Equipos"
+          empty="Sin datos suficientes todavía."
+          items={leaders.teamFtPct.map((t, i) => ({
+            key: t.team.id,
+            rank: i,
+            primary: t.team.name,
+            teamId: t.team.id,
+            secondary: `${t.games} partidos`,
+            value: (t.pct * 100).toFixed(1),
+            unit: "%",
+          }))}
+        />
+        <LeaderPanel
+          title={`% Tiros libres · Jugadores (mín. ${MIN_GAMES_PLAYER} PJ, ${MIN_FT_ATT_PLAYER} TL)`}
+          empty="Ningún jugador cumple los mínimos todavía."
+          items={leaders.playerFtPct.map((p, i) => ({
+            key: p.playerId,
+            rank: i,
+            primary: p.playerName,
+            teamId: p.team?.id,
+            secondary: `${p.team?.name ?? "—"} · ${p.games} PJ`,
+            value: p.pct != null ? (p.pct * 100).toFixed(1) : "—",
+            unit: "%",
+          }))}
+        />
+      </div>
+
       {/* ---------- Clasificación ---------- */}
       <div className="panel">
         <div className="section-title">
@@ -149,53 +209,6 @@ export default async function SeasonPage({
         )}
       </div>
 
-      {/* ---------- Próxima jornada ---------- */}
-      <div className="panel">
-        <div className="section-title">
-          <span className="dot" /> Próxima jornada
-        </div>
-        {upcoming.length === 0 ? (
-          <p style={{ color: "var(--chalk-dim)", fontSize: 14 }}>
-            No hay partidos programados todavía para esta temporada.
-          </p>
-        ) : (
-          upcoming.map((g) => (
-            <a className="panel game-link" key={g.gameId} href={`/partidos/${g.gameId}`}>
-              <div className="meta-row">
-                <span>{fmtDate(g.date)}</span>
-              </div>
-              <div className="matchup">
-                <div className="matchup-team">
-                  {g.home && <TeamLogo teamId={g.home.id} name={g.home.name} size={26} />}
-                  <div className="team-name">{g.home?.name ?? "Equipo local"}</div>
-                </div>
-                <div className="vs">vs</div>
-                <div className="matchup-team away">
-                  {g.away && <TeamLogo teamId={g.away.id} name={g.away.name} size={26} />}
-                  <div className="team-name away">{g.away?.name ?? "Equipo visitante"}</div>
-                </div>
-              </div>
-              {g.prediction ? (
-                <>
-                  <div className="prob-bar">
-                    <div className="prob-fill-home" style={{ width: `${g.prediction.home_win_prob * 100}%` }} />
-                    <div className="prob-fill-away" style={{ width: `${(1 - g.prediction.home_win_prob) * 100}%` }} />
-                  </div>
-                  <div className="prob-labels">
-                    <span><strong>{Math.round(g.prediction.home_win_prob * 100)}%</strong> local</span>
-                    <span><strong>{Math.round((1 - g.prediction.home_win_prob) * 100)}%</strong> visitante</span>
-                  </div>
-                </>
-              ) : (
-                <div className="prob-labels" style={{ justifyContent: "center", marginTop: 12 }}>
-                  Sin predicción todavía
-                </div>
-              )}
-            </a>
-          ))
-        )}
-      </div>
-
       {/* ---------- Última jornada jugada ---------- */}
       <div className="panel">
         <div className="section-title">
@@ -252,6 +265,53 @@ export default async function SeasonPage({
         )}
       </div>
 
+      {/* ---------- Próxima jornada ---------- */}
+      <div className="panel">
+        <div className="section-title">
+          <span className="dot" /> Próxima jornada
+        </div>
+        {upcoming.length === 0 ? (
+          <p style={{ color: "var(--chalk-dim)", fontSize: 14 }}>
+            No hay partidos programados todavía para esta temporada.
+          </p>
+        ) : (
+          upcoming.map((g) => (
+            <a className="panel game-link" key={g.gameId} href={`/partidos/${g.gameId}`}>
+              <div className="meta-row">
+                <span>{fmtDate(g.date)}</span>
+              </div>
+              <div className="matchup">
+                <div className="matchup-team">
+                  {g.home && <TeamLogo teamId={g.home.id} name={g.home.name} size={26} />}
+                  <div className="team-name">{g.home?.name ?? "Equipo local"}</div>
+                </div>
+                <div className="vs">vs</div>
+                <div className="matchup-team away">
+                  {g.away && <TeamLogo teamId={g.away.id} name={g.away.name} size={26} />}
+                  <div className="team-name away">{g.away?.name ?? "Equipo visitante"}</div>
+                </div>
+              </div>
+              {g.prediction ? (
+                <>
+                  <div className="prob-bar">
+                    <div className="prob-fill-home" style={{ width: `${g.prediction.home_win_prob * 100}%` }} />
+                    <div className="prob-fill-away" style={{ width: `${(1 - g.prediction.home_win_prob) * 100}%` }} />
+                  </div>
+                  <div className="prob-labels">
+                    <span><strong>{Math.round(g.prediction.home_win_prob * 100)}%</strong> local</span>
+                    <span><strong>{Math.round((1 - g.prediction.home_win_prob) * 100)}%</strong> visitante</span>
+                  </div>
+                </>
+              ) : (
+                <div className="prob-labels" style={{ justifyContent: "center", marginTop: 12 }}>
+                  Sin predicción todavía
+                </div>
+              )}
+            </a>
+          ))
+        )}
+      </div>
+
       {/* ---------- Todas las jornadas ---------- */}
       <div className="panel">
         <div className="section-title">
@@ -275,66 +335,6 @@ export default async function SeasonPage({
             ))}
           </div>
         )}
-      </div>
-
-      {/* ---------- Líderes ---------- */}
-      <div className="section-title" style={{ marginTop: 26, marginBottom: 12 }}>
-        <span className="dot" /> Líderes de la temporada
-      </div>
-
-      <div className="leader-grid">
-        <LeaderPanel
-          title="Puntos por partido · Equipos"
-          empty="Sin datos suficientes todavía."
-          items={leaders.teamPoints.map((t, i) => ({
-            key: t.team.id,
-            rank: i,
-            primary: t.team.name,
-            teamId: t.team.id,
-            secondary: `${t.games} partidos`,
-            value: t.avg.toFixed(1),
-            unit: "pts",
-          }))}
-        />
-        <LeaderPanel
-          title={`Puntos por partido · Jugadores (mín. ${MIN_GAMES_PLAYER} PJ)`}
-          empty="Ningún jugador cumple el mínimo de partidos todavía."
-          items={leaders.playerPoints.map((p, i) => ({
-            key: p.playerId,
-            rank: i,
-            primary: p.playerName,
-            teamId: p.team?.id,
-            secondary: `${p.team?.name ?? "—"} · ${p.games} PJ`,
-            value: p.avg.toFixed(1),
-            unit: "pts",
-          }))}
-        />
-        <LeaderPanel
-          title="% Tiros libres · Equipos"
-          empty="Sin datos suficientes todavía."
-          items={leaders.teamFtPct.map((t, i) => ({
-            key: t.team.id,
-            rank: i,
-            primary: t.team.name,
-            teamId: t.team.id,
-            secondary: `${t.games} partidos`,
-            value: (t.pct * 100).toFixed(1),
-            unit: "%",
-          }))}
-        />
-        <LeaderPanel
-          title={`% Tiros libres · Jugadores (mín. ${MIN_GAMES_PLAYER} PJ, ${MIN_FT_ATT_PLAYER} TL)`}
-          empty="Ningún jugador cumple los mínimos todavía."
-          items={leaders.playerFtPct.map((p, i) => ({
-            key: p.playerId,
-            rank: i,
-            primary: p.playerName,
-            teamId: p.team?.id,
-            secondary: `${p.team?.name ?? "—"} · ${p.games} PJ`,
-            value: p.pct != null ? (p.pct * 100).toFixed(1) : "—",
-            unit: "%",
-          }))}
-        />
       </div>
     </div>
   );
