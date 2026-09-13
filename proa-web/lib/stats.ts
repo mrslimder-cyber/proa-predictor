@@ -597,12 +597,106 @@ async function getSeasonTeamCount(season: string): Promise<number> {
  * calendario (p. ej. viernes + sábado), esto la completa igualmente
  * porque no cortamos por fecha exacta, sino por cantidad de partidos.
  */
-export async function getLastJornadaGames(season: string): Promise<PlayedGameRow[]> {
-  const allFinished = await getSeasonFinishedGames(season); // ya viene ordenado, más reciente primero
-  if (allFinished.length === 0) return [];
+export type UpcomingGameRow = {
+  gameId: number;
+  date: string;
+  home: Team | null;
+  away: Team | null;
+  prediction: Prediction | null;
+};
+
+/**
+ * Próxima jornada de la temporada: los siguientes N partidos con
+ * status='scheduled' y fecha >= hoy, N = nº de equipos/2 (mismo criterio
+ * que en la home, ya que Proballers no publica un número de jornada).
+ */
+export async function getSeasonUpcomingJornada(season: string): Promise<UpcomingGameRow[]> {
+  const todayIso = new Date().toISOString();
   const teamCount = await getSeasonTeamCount(season);
   const gamesPerJornada = Math.max(1, Math.floor(teamCount / 2));
-  return allFinished.slice(0, gamesPerJornada);
+
+  const { data: games } = await supabase
+    .from("games")
+    .select("*")
+    .eq("status", "scheduled")
+    .eq("season", season)
+    .gte("date", todayIso)
+    .order("date", { ascending: true })
+    .limit(gamesPerJornada);
+
+  if (!games || games.length === 0) return [];
+
+  const teamIds = Array.from(new Set(games.flatMap((g) => [g.home_team_id, g.away_team_id])));
+  const gameIds = games.map((g) => g.id);
+
+  const [teamById, { data: predictions }] = await Promise.all([
+    getTeamsById(teamIds),
+    supabase.from("predictions").select("*").in("game_id", gameIds),
+  ]);
+  const predByGame = new Map((predictions ?? []).map((p) => [p.game_id, p]));
+
+  return games.map((g) => ({
+    gameId: g.id,
+    date: g.date,
+    home: teamById.get(g.home_team_id) ?? null,
+    away: teamById.get(g.away_team_id) ?? null,
+    prediction: predByGame.get(g.id) ?? null,
+  }));
+}
+
+export type JornadaGames = {
+  number: number;
+  label: string;
+  dateRange: string;
+  games: PlayedGameRow[];
+};
+
+function fmtJornadaDate(d: string) {
+  return new Date(d).toLocaleDateString("es-ES", { day: "2-digit", month: "short" });
+}
+
+/**
+ * Todos los partidos finalizados de la temporada, agrupados en bloques
+ * aproximados de "jornada" (tamaño = nº de equipos/2), en orden
+ * cronológico. Numeradas 1, 2, 3... según el orden real de juego, y
+ * devueltas con la más reciente primero (para listarlas).
+ */
+export async function getSeasonJornadas(season: string): Promise<JornadaGames[]> {
+  const finished = await getSeasonFinishedGames(season); // viene ordenado desc
+  if (finished.length === 0) return [];
+
+  const chronological = [...finished].sort(
+    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+  );
+  const teamCount = await getSeasonTeamCount(season);
+  const blockSize = Math.max(1, Math.floor(teamCount / 2));
+
+  const jornadas: JornadaGames[] = [];
+  for (let i = 0; i < chronological.length; i += blockSize) {
+    const chunk = chronological.slice(i, i + blockSize);
+    const number = jornadas.length + 1;
+    const first = fmtJornadaDate(chunk[0].date);
+    const last = fmtJornadaDate(chunk[chunk.length - 1].date);
+    jornadas.push({
+      number,
+      label: `Jornada ${number}`,
+      dateRange: first === last ? first : `${first} – ${last}`,
+      games: chunk,
+    });
+  }
+  return jornadas.reverse();
+}
+
+/** Los partidos de UNA jornada concreta (por su número), o null si no existe. */
+export async function getJornadaGames(season: string, jornadaNumber: number): Promise<JornadaGames | null> {
+  const jornadas = await getSeasonJornadas(season);
+  return jornadas.find((j) => j.number === jornadaNumber) ?? null;
+}
+
+/** Última jornada jugada (la más reciente cronológicamente). */
+export async function getLastJornadaGames(season: string): Promise<PlayedGameRow[]> {
+  const jornadas = await getSeasonJornadas(season);
+  return jornadas[0]?.games ?? [];
 }
 
 /** Último partido finalizado de una temporada (más reciente por fecha). */

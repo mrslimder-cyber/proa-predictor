@@ -3,8 +3,9 @@ import {
   getSeasons,
   getStandings,
   getSeasonLeaders,
-  getSeasonFinishedGames,
+  getSeasonUpcomingJornada,
   getLastJornadaGames,
+  getSeasonJornadas,
   MIN_GAMES_PLAYER,
   MIN_FT_ATT_PLAYER,
 } from "@/lib/stats";
@@ -17,6 +18,10 @@ function rankClass(i: number) {
   return i === 0 ? "top1" : i === 1 ? "top2" : i === 2 ? "top3" : "";
 }
 
+function fmtDate(d: string) {
+  return new Date(d).toLocaleDateString("es-ES", { weekday: "short", day: "2-digit", month: "short" });
+}
+
 export default async function SeasonPage({
   params,
 }: {
@@ -26,12 +31,13 @@ export default async function SeasonPage({
   const seasons = await getSeasons();
   if (!seasons.includes(season)) notFound();
 
-  const [standings, leaders, lastJornada, allPlayedGames] = await Promise.all([
-  getStandings(season),
-  getSeasonLeaders(season),
-  getLastJornadaGames(season),
-  getSeasonFinishedGames(season),
-]);
+  const [standings, leaders, upcoming, lastJornada, jornadas] = await Promise.all([
+    getStandings(season),
+    getSeasonLeaders(season),
+    getSeasonUpcomingJornada(season),
+    getLastJornadaGames(season),
+    getSeasonJornadas(season),
+  ]);
 
   const isPreseason = standings.length > 0 && standings.every((r) => r.played === 0);
 
@@ -123,7 +129,7 @@ export default async function SeasonPage({
         ) : (
           <div className="card-grid">
             {standings.map((row) => (
-              <a
+              
                 key={row.team.id}
                 href={`/temporadas/${encodeURIComponent(season)}/equipos/${row.team.id}`}
                 className="tile team-tile"
@@ -143,12 +149,59 @@ export default async function SeasonPage({
         )}
       </div>
 
-      {/* ---------- NUEVO: Partidos jugados ---------- */}
+      {/* ---------- Próxima jornada ---------- */}
       <div className="panel">
         <div className="section-title">
-          <span className="dot" /> Partidos jugados ({allPlayedGames.length})
+          <span className="dot" /> Próxima jornada
         </div>
-        {allPlayedGames.length === 0 ? (
+        {upcoming.length === 0 ? (
+          <p style={{ color: "var(--chalk-dim)", fontSize: 14 }}>
+            No hay partidos programados todavía para esta temporada.
+          </p>
+        ) : (
+          upcoming.map((g) => (
+            <a className="panel game-link" key={g.gameId} href={`/partidos/${g.gameId}`}>
+              <div className="meta-row">
+                <span>{fmtDate(g.date)}</span>
+              </div>
+              <div className="matchup">
+                <div className="matchup-team">
+                  {g.home && <TeamLogo teamId={g.home.id} name={g.home.name} size={26} />}
+                  <div className="team-name">{g.home?.name ?? "Equipo local"}</div>
+                </div>
+                <div className="vs">vs</div>
+                <div className="matchup-team away">
+                  {g.away && <TeamLogo teamId={g.away.id} name={g.away.name} size={26} />}
+                  <div className="team-name away">{g.away?.name ?? "Equipo visitante"}</div>
+                </div>
+              </div>
+              {g.prediction ? (
+                <>
+                  <div className="prob-bar">
+                    <div className="prob-fill-home" style={{ width: `${g.prediction.home_win_prob * 100}%` }} />
+                    <div className="prob-fill-away" style={{ width: `${(1 - g.prediction.home_win_prob) * 100}%` }} />
+                  </div>
+                  <div className="prob-labels">
+                    <span><strong>{Math.round(g.prediction.home_win_prob * 100)}%</strong> local</span>
+                    <span><strong>{Math.round((1 - g.prediction.home_win_prob) * 100)}%</strong> visitante</span>
+                  </div>
+                </>
+              ) : (
+                <div className="prob-labels" style={{ justifyContent: "center", marginTop: 12 }}>
+                  Sin predicción todavía
+                </div>
+              )}
+            </a>
+          ))
+        )}
+      </div>
+
+      {/* ---------- Última jornada jugada ---------- */}
+      <div className="panel">
+        <div className="section-title">
+          <span className="dot" /> Última jornada jugada
+        </div>
+        {lastJornada.length === 0 ? (
           <p style={{ color: "var(--chalk-dim)", fontSize: 14 }}>
             Todavía no se ha jugado ningún partido en esta temporada.
           </p>
@@ -164,30 +217,18 @@ export default async function SeasonPage({
                 </tr>
               </thead>
               <tbody>
-                {allPlayedGames.map((g) => {
+                {lastJornada.map((g) => {
                   const homeWon = g.homeScore > g.awayScore;
                   return (
-                    <tr
-                      key={g.gameId}
-                      className="linked"
-                      onClick={undefined}
-                    >
+                    <tr key={g.gameId} className="linked">
                       <td style={{ whiteSpace: "nowrap" }}>
                         <a href={`/partidos/${g.gameId}`}>
-                          {new Date(g.date).toLocaleDateString("es-ES", {
-                            day: "2-digit",
-                            month: "short",
-                          })}
+                          {new Date(g.date).toLocaleDateString("es-ES", { day: "2-digit", month: "short" })}
                         </a>
                       </td>
                       <td>
                         <a href={`/partidos/${g.gameId}`} style={{ display: "block" }}>
-                          <TeamInline
-                            teamId={g.home?.id ?? 0}
-                            name={g.home?.name ?? "Local"}
-                            size={20}
-                            bold={homeWon}
-                          />
+                          <TeamInline teamId={g.home?.id ?? 0} name={g.home?.name ?? "Local"} size={20} bold={homeWon} />
                         </a>
                       </td>
                       <td className="num" style={{ whiteSpace: "nowrap" }}>
@@ -199,12 +240,7 @@ export default async function SeasonPage({
                       </td>
                       <td>
                         <a href={`/partidos/${g.gameId}`} style={{ display: "block" }}>
-                          <TeamInline
-                            teamId={g.away?.id ?? 0}
-                            name={g.away?.name ?? "Visitante"}
-                            size={20}
-                            bold={!homeWon}
-                          />
+                          <TeamInline teamId={g.away?.id ?? 0} name={g.away?.name ?? "Visitante"} size={20} bold={!homeWon} />
                         </a>
                       </td>
                     </tr>
@@ -212,6 +248,31 @@ export default async function SeasonPage({
                 })}
               </tbody>
             </table>
+          </div>
+        )}
+      </div>
+
+      {/* ---------- Todas las jornadas ---------- */}
+      <div className="panel">
+        <div className="section-title">
+          <span className="dot" /> Todas las jornadas
+        </div>
+        {jornadas.length === 0 ? (
+          <p style={{ color: "var(--chalk-dim)", fontSize: 14 }}>
+            Todavía no hay jornadas jugadas en esta temporada.
+          </p>
+        ) : (
+          <div className="card-grid">
+            {jornadas.map((j) => (
+              
+                key={j.number}
+                href={`/temporadas/${encodeURIComponent(season)}/jornada/${j.number}`}
+                className="tile"
+              >
+                <div className="tile-title" style={{ fontSize: 14 }}>{j.label}</div>
+                <div className="tile-sub">{j.dateRange} · {j.games.length} partidos</div>
+              </a>
+            ))}
           </div>
         )}
       </div>
