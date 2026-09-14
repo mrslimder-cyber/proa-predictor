@@ -146,6 +146,7 @@ def run_all_seasons(seasons: list[str] | None = None):
     en team_game_stats (no de partidos que ya estén marcados "final": eso es
     solo el resultado, no implica que el boxscore se haya guardado con éxito).
     """
+    init_db()
     seasons = seasons or ALL_SEASONS
     print(f"=== Ingesta de {len(seasons)} temporadas: {', '.join(seasons)} ===\n")
     for season in seasons:

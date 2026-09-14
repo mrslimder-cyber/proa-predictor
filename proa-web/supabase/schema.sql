@@ -126,3 +126,14 @@ create table if not exists game_insights (
 
 alter table game_insights enable row level security;
 create policy "public read game_insights" on game_insights for select using (true);
+
+create table if not exists bridge_game_results (
+  id serial primary key,
+  team_id integer not null references teams(id),
+  date timestamp not null,
+  is_home boolean not null,
+  team_score integer not null,
+  opp_score integer not null,
+  source_season text not null,
+  unique (team_id, date, team_score, opp_score)
+);
