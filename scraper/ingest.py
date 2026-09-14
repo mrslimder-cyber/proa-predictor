@@ -22,6 +22,7 @@ from config import CURRENT_SEASON, HISTORICAL_SEASONS, ALL_SEASONS
 from db.database import get_session, init_db
 from db.models import Game, Team, TeamGameStats, PlayerGameStats
 from scraper.proballers_scraper import get_season_games, get_boxscore
+from scraper.bridge import backfill_new_teams
  
  
 def upsert_teams(session, games: list[dict], season: str):
@@ -148,6 +149,7 @@ def run_all_seasons(seasons: list[str] | None = None):
     seasons = seasons or ALL_SEASONS
     print(f"=== Ingesta de {len(seasons)} temporadas: {', '.join(seasons)} ===\n")
     for season in seasons:
+        backfill_new_teams()
         try:
             run(season)
         except Exception as e:

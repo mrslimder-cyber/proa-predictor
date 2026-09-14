@@ -27,6 +27,7 @@ from config import ROLLING_WINDOWS, MIN_GAMES_FOR_FEATURES
 from db.database import get_session
 from db.models import Game, TeamGameStats
 from features.elo import EloSystem
+from scraper.bridge import seed_bridge_games
 
 
 def _safe_stat(d: dict, key: str) -> float:
@@ -117,6 +118,7 @@ def build_dataset() -> pd.DataFrame:
 
     elo = EloSystem()
     team_states: dict[int, TeamState] = {}
+    seed_bridge_games(team_states, elo, TeamState)
     rows = []
 
     for g in games:

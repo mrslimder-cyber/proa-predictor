@@ -186,3 +186,26 @@ class GameInsight(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     __table_args__ = (UniqueConstraint("game_id", "model_version", name="uq_game_insight_model"),)
+
+class BridgeGameResult(Base):
+    """
+    Partido "puente" de la temporada anterior de un equipo NUEVO en Pro A
+    (ascendido o descendido), usado solo para precalentar el Elo y las
+    medias móviles de ESE equipo antes de su primer partido real de Pro A.
+    No está ligado a `games`/`team_game_stats` (esas alimentan la web vía
+    Supabase): es una tabla interna del pipeline de Python. Ver
+    scraper/bridge.py.
+    """
+    __tablename__ = "bridge_game_results"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    team_id = Column(Integer, ForeignKey("teams.id"), nullable=False)
+    date = Column(DateTime, nullable=False)
+    is_home = Column(Boolean, nullable=False)
+    team_score = Column(Integer, nullable=False)
+    opp_score = Column(Integer, nullable=False)
+    source_season = Column(String, nullable=False)  # temporada de origen, ej. "2025-2026"
+
+    __table_args__ = (
+        UniqueConstraint("team_id", "date", "team_score", "opp_score", name="uq_bridge_team_date_score"),
+    )

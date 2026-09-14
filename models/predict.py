@@ -16,6 +16,7 @@ from db.database import get_session
 from db.models import Game, TeamGameStats, Prediction
 from features.elo import EloSystem
 from features.feature_engineering import TeamState, _safe_stat
+from scraper.bridge import seed_bridge_games
 
 
 def _rebuild_state_up_to_today():
@@ -49,6 +50,7 @@ def _rebuild_state_up_to_today():
 
     elo = EloSystem()
     team_states: dict[int, TeamState] = {}
+    seed_bridge_games(team_states, elo, TeamState)
 
     for g in finished:
         home_state = team_states.setdefault(g.home_team_id, TeamState())

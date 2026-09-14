@@ -103,6 +103,7 @@ ELO_MARGIN_MULTIPLIER = True  # si True, victorias por más puntos pesan más
 # --- Feature engineering ---
 ROLLING_WINDOWS = [3, 5, 10]     # partidos hacia atrás para medias móviles
 MIN_GAMES_FOR_FEATURES = 3       # partidos mínimos jugados antes de confiar en las medias
+BRIDGE_GAMES_PER_TEAM = 6
 
 # --- Modelo ---
 MODEL_VERSION = "v1"
