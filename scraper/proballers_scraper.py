@@ -226,8 +226,6 @@ def get_boxscore(game_url: str) -> dict:
         cols = [str(c).strip() for c in t.columns]
         if {"2M", "2A", "Pts", "Reb", "Ast"}.issubset(set(cols)) and len(t) == 2:
             team_stats_table = t
-        elif {"Tiros", "Pérdidas", "Rebotes ofensivos", "Tiros libres"}.issubset(set(cols)):
-            four_factors_table = t
         elif {"Pts", "Reb", "Ast", "Min"}.issubset(set(cols)):
             player_tables.append(t)
 
@@ -241,7 +239,7 @@ def get_boxscore(game_url: str) -> dict:
     team_order = team_order[:2]  # local, visitante
 
     team_stats = []
-    if team_stats_table is not None and four_factors_table is not None:
+    if team_stats_table is not None:
         for i, (team_id, _slug) in enumerate(team_order):
             row = team_stats_table.iloc[i]
             ff_row = four_factors_table.iloc[i]
@@ -263,11 +261,14 @@ def get_boxscore(game_url: str) -> dict:
                 "blk": int(row.get("Tap", 0)),
                 "pf": int(row.get("Fa", 0)),
                 "pts": int(row.get("Pts", 0)),
-                "efg_pct": _pct_to_float(ff_row.get("Tiros")),
-                "tov_pct": _pct_to_float(ff_row.get("Pérdidas")),
-                "orb_pct": _pct_to_float(ff_row.get("Rebotes ofensivos")),
-                "ft_rate": _pct_to_float(ff_row.get("Tiros libres")),
             })
+
+    # Four Factors calculados por nosotros con los conteos de ambos equipos
+    # (ver _team_four_factors), no con la tabla "Four Factors" de Proballers.
+    if len(team_stats) == 2:
+        for i, own in enumerate(team_stats):
+            opp = team_stats[1 - i]
+            own.update(_team_four_factors(own, opp))
 
     # Stats por jugador: cada tabla de jugadores va precedida por el nombre
     # del equipo; asumimos que aparecen en el mismo orden que team_order
@@ -312,6 +313,23 @@ def _pct_to_float(val) -> float | None:
         return None
     return float(str(val).replace("%", "").strip()) / 100
 
+def _team_four_factors(own: dict, opp: dict) -> dict:
+    """
+    Four Factors de Dean Oliver, calculados a partir de los conteos brutos
+    del boxscore (tabla "Estadísticas de los equipos", fiable) en vez de la
+    tabla "Four Factors" que publica Proballers en la página del partido:
+    hemos comprobado que esa tabla llega incompleta con frecuencia (2 de
+    los 4 factores para un equipo, los otros 2 para el rival), así que ya
+    no la usamos como fuente.
+    """
+    fgm = own["fg2_made"] + own["fg3_made"]
+    fga = own["fg2_att"] + own["fg3_att"]
+    efg_pct = (fgm + 0.5 * own["fg3_made"]) / fga if fga else None
+    denom_tov = fga + 0.44 * own["ft_att"] + own["tov"]
+    tov_pct = own["tov"] / denom_tov if denom_tov else None
+    orb_pct = own["oreb"] / (own["oreb"] + opp["dreb"]) if (own["oreb"] + opp["dreb"]) else None
+    ft_rate = own["ft_att"] / fga if fga else None
+    return {"efg_pct": efg_pct, "tov_pct": tov_pct, "orb_pct": orb_pct, "ft_rate": ft_rate}
 
 def _safe_int(val):
     try:

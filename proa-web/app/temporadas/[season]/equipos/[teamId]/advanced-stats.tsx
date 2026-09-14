@@ -1,8 +1,44 @@
 "use client";
 
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell } from "recharts";
-import type { TeamAdvancedRow } from "@/lib/stats";
+import type { TeamAdvancedRow, TeamFourFactorsRow } from "@/lib/stats";
 
+export function FourFactorsPanel({ rows, teamId }: { rows: TeamFourFactorsRow[]; teamId: number }) {
+  const own = rows.find((r) => r.team.id === teamId);
+  if (!own) return null;
+  const total = rows.length;
+
+  const rankOf = (key: keyof TeamFourFactorsRow, higherIsBetter = true) => {
+    const sorted = [...rows].sort((a, b) =>
+      higherIsBetter ? (b[key] as number) - (a[key] as number) : (a[key] as number) - (b[key] as number)
+    );
+    return sorted.findIndex((r) => r.team.id === teamId) + 1;
+  };
+  const leagueAvg = (key: keyof TeamFourFactorsRow) =>
+    rows.reduce((a, r) => a + (r[key] as number), 0) / rows.length;
+
+  const pill = (label: string, key: keyof TeamFourFactorsRow, higherIsBetter = true) => (
+    <div className="stat-pill" key={key}>
+      <div className="label">{label}</div>
+      <div className="value">{((own[key] as number) * 100).toFixed(1)}%</div>
+      <div style={{ fontSize: 11, color: "var(--chalk-dim)", marginTop: 2 }}>
+        #{rankOf(key, higherIsBetter)} de {total} · liga {((leagueAvg(key)) * 100).toFixed(1)}%
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="panel">
+      <div className="section-title"><span className="dot" /> Four Factors (Dean Oliver)</div>
+      <div className="pill-row">
+        {pill("eFG%", "efgPct")}
+        {pill("% Pérdidas (TOV%)", "tovPct", false)}
+        {pill("% Rebote ofensivo", "orbPct")}
+        {pill("Ratio tiros libres", "ftRate")}
+      </div>
+    </div>
+  );
+}
 const AMBER = "#ff8a2b";
 const DIM = "#98a3ad";
 const LINE = "#29323d";

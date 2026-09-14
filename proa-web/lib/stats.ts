@@ -1118,3 +1118,73 @@ export async function getSeasonAdvancedStats(season: string): Promise<TeamAdvanc
   rows.sort((a, b) => b.netRating - a.netRating);
   return rows;
 }
+
+export type TeamFourFactorsRow = {
+  team: Team;
+  games: number;
+  efgPct: number;
+  tovPct: number;
+  orbPct: number;
+  ftRate: number;
+};
+
+export async function getSeasonFourFactors(season: string): Promise<TeamFourFactorsRow[]> {
+  const games = await getSeasonGames(season);
+  const gameIds = games.map((g) => g.id);
+  if (gameIds.length === 0) return [];
+
+  const teamStats = await getTeamStatsForGames(gameIds);
+  const byGame = new Map<number, TeamGameStats[]>();
+  for (const s of teamStats) {
+    const arr = byGame.get(s.game_id) ?? [];
+    arr.push(s);
+    byGame.set(s.game_id, arr);
+  }
+
+  const teamIds = Array.from(new Set(teamStats.map((s) => s.team_id)));
+  const teamById = await getTeamsById(teamIds);
+
+  const acc = new Map
+    number,
+    { games: number; fgm: number; fga: number; fg3m: number; fta: number; tov: number; oreb: number; oppDreb: number }
+  >();
+  const ensure = (id: number) => {
+    if (!acc.has(id)) acc.set(id, { games: 0, fgm: 0, fga: 0, fg3m: 0, fta: 0, tov: 0, oreb: 0, oppDreb: 0 });
+    return acc.get(id)!;
+  };
+
+  for (const g of games) {
+    const pair = byGame.get(g.id);
+    if (!pair || pair.length < 2) continue;
+    const [a, b] = pair;
+    for (const [own, opp] of [[a, b], [b, a]] as const) {
+      if (own.fg2_att == null || own.fg3_att == null || own.ft_att == null || own.tov == null || own.oreb == null || opp.dreb == null) {
+        continue;
+      }
+      const e = ensure(own.team_id);
+      e.games += 1;
+      e.fgm += (own.fg2_made ?? 0) + (own.fg3_made ?? 0);
+      e.fga += own.fg2_att + own.fg3_att;
+      e.fg3m += own.fg3_made ?? 0;
+      e.fta += own.ft_att;
+      e.tov += own.tov;
+      e.oreb += own.oreb;
+      e.oppDreb += opp.dreb;
+    }
+  }
+
+  const rows: TeamFourFactorsRow[] = [];
+  for (const [teamId, e] of acc.entries()) {
+    const team = teamById.get(teamId);
+    if (!team || e.games === 0 || e.fga === 0) continue;
+    rows.push({
+      team,
+      games: e.games,
+      efgPct: (e.fgm + 0.5 * e.fg3m) / e.fga,
+      tovPct: e.tov / (e.fga + 0.44 * e.fta + e.tov),
+      orbPct: e.oreb + e.oppDreb > 0 ? e.oreb / (e.oreb + e.oppDreb) : 0,
+      ftRate: e.fta / e.fga,
+    });
+  }
+  return rows;
+}

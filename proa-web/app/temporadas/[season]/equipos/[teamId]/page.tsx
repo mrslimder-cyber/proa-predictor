@@ -3,8 +3,8 @@ import { PointsTrendChart, TopScorersChart } from "./team-charts";
 import TeamSwitcher from "./team-switcher";
 import { TeamLogo } from "@/lib/team-logo";
 import type { RosterRow } from "@/lib/stats";
-import { AdvancedStatsPanel } from "./advanced-stats";
-import { getTeamDetail, getSeasonTeams, getSeasonAdvancedStats, MIN_GAMES_PLAYER, MIN_FT_ATT_PLAYER } from "@/lib/stats";
+import { AdvancedStatsPanel, FourFactorsPanel } from "./advanced-stats";
+import { getTeamDetail, getSeasonTeams, getSeasonAdvancedStats, getSeasonFourFactors, MIN_GAMES_PLAYER, MIN_FT_ATT_PLAYER } from "@/lib/stats";
 
 
 export const revalidate = 300;
@@ -18,10 +18,11 @@ export default async function TeamDetailPage({
   const teamId = Number(params.teamId);
   if (Number.isNaN(teamId)) notFound();
 
-  const [detail, seasonTeams, advancedStats] = await Promise.all([
+  const [detail, seasonTeams, advancedStats, fourFactors] = await Promise.all([
     getTeamDetail(season, teamId),
     getSeasonTeams(season),
     getSeasonAdvancedStats(season),
+    getSeasonFourFactors(season),
   ]);
 
   if (!detail) notFound();
@@ -134,6 +135,7 @@ export default async function TeamDetailPage({
       )}
 
       <AdvancedStatsPanel rows={advancedStats} teamId={teamId} />
+      <FourFactorsPanel rows={fourFactors} teamId={teamId} />
 
       {/* ---------- Top 3 por categoría ---------- */}
       <div className="section-title" style={{ marginTop: 26, marginBottom: 12 }}>
