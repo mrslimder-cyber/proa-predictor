@@ -1144,10 +1144,7 @@ export async function getSeasonFourFactors(season: string): Promise<TeamFourFact
   const teamIds = Array.from(new Set(teamStats.map((s) => s.team_id)));
   const teamById = await getTeamsById(teamIds);
 
-  const acc = new Map
-    number,
-    { games: number; fgm: number; fga: number; fg3m: number; fta: number; tov: number; oreb: number; oppDreb: number }
-  >();
+  const acc = new Map<number, { games: number; fgm: number; fga: number; fg3m: number; fta: number; tov: number; oreb: number; oppDreb: number }>();
   const ensure = (id: number) => {
     if (!acc.has(id)) acc.set(id, { games: 0, fgm: 0, fga: 0, fg3m: 0, fta: 0, tov: 0, oreb: 0, oppDreb: 0 });
     return acc.get(id)!;
