@@ -45,8 +45,9 @@ import re
 from config import BRIDGE_GAMES_PER_TEAM, CURRENT_SEASON, ELO_INITIAL_RATING
 from db.database import get_session
 from db.models import BridgeGameResult, Game, Team
+from config import PROBALLERS_BASE
 from scraper.proballers_scraper import (
-    GAME_HREF_RE, PROBALLERS_BASE, _extract_date_from_href, _get,
+    GAME_HREF_RE, _extract_date_from_href, _get,
 )
 
 _GHOST_TEAM_ID = -1  # id "fantasma" para el rival en partidos puente; nunca persiste entre llamadas
