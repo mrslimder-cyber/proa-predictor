@@ -12,50 +12,66 @@ type Row = Game & {
 
 type Matchday = { label: string; dateRange: string; games: Row[] };
 
+const TWO_DAYS_MS = 2 * 24 * 60 * 60 * 1000;
+
 async function getUpcomingByMatchday(): Promise<Matchday[]> {
   const seasons = await getSeasons();
   const season = seasons[0];
   if (!season) return [];
 
-  // Proballers no publica un número de jornada explícito en el calendario
-  // (la columna `matchday` de la base de datos está siempre vacía porque
-  // no hay de dónde sacarla al scrapear). Como aproximación razonable,
-  // agrupamos los próximos partidos en bloques de "nº de equipos / 2"
-  // -- el tamaño естándar de una jornada de liga en formato round-robin --
-  // en vez de enseñar una lista plana larga.
-  const { data: teamsThisSeason } = await supabase
+  // Traemos TODO el calendario de la temporada (jugados y pendientes), no
+  // solo los "scheduled" con fecha futura. Antes, en cuanto pasaba la hora
+  // de un partido de hoy (jugado o no), desaparecía de la portada aunque la
+  // jornada siguiente ni se acercara todavía. Con el calendario completo
+  // podemos reconstruir las jornadas reales y decidir cuál enseñar según la
+  // fecha de la SIGUIENTE jornada, no según cada partido suelto.
+  const { data: allGames } = await supabase
     .from("games")
-    .select("home_team_id, away_team_id")
+    .select("*")
     .eq("season", season)
-    .range(0, 999);
+    .order("date", { ascending: true })
+    .range(0, 4999);
+
+  if (!allGames || allGames.length === 0) return [];
+
   const teamIdsSet = new Set<number>();
-  for (const g of teamsThisSeason ?? []) {
+  for (const g of allGames) {
     teamIdsSet.add(g.home_team_id);
     teamIdsSet.add(g.away_team_id);
   }
   const gamesPerMatchday = Math.max(1, Math.floor(teamIdsSet.size / 2));
 
-  // OJO: filtramos por fecha >= hoy además de por status='scheduled'.
-  // Sin esto, algún partido antiguo de una temporada ya acabada que se
-  // quedó sin resultado cargado (p. ej. porque el boxscore nunca se pudo
-  // scrapear) aparece como "próximo partido" y se cuela el primero de la
-  // lista, rompiendo el orden cronológico real.
-  const todayIso = new Date().toISOString();
-  const { data: games } = await supabase
-    .from("games")
-    .select("*")
-    .eq("status", "scheduled")
-    .eq("season", season)
-    .gte("date", todayIso)
-    .order("date", { ascending: true })
-    .limit(gamesPerMatchday * 2);
+  // Bloques cronológicos de tamaño "nº de equipos / 2" -- la misma
+  // aproximación de jornada que ya se usa en /temporadas/[season]/jornada/[n]
+  // y en /evolucion (Proballers no publica un número de jornada explícito).
+  const jornadas: Game[][] = [];
+  for (let i = 0; i < allGames.length; i += gamesPerMatchday) {
+    jornadas.push(allGames.slice(i, i + gamesPerMatchday));
+  }
 
-  if (!games || games.length === 0) return [];
+  // Elegimos la jornada "actual" a mostrar: la más antigua cuya jornada
+  // siguiente todavía no empieza dentro de 2 días. Así, la jornada de un
+  // fin de semana se queda en portada -- con predicción y resultado si ya
+  // ha terminado -- hasta 2 días antes del primer partido de la siguiente.
+  let displayIndex = jornadas.length - 1;
+  const now = new Date();
+  for (let i = 0; i < jornadas.length - 1; i++) {
+    const nextFirstDate = new Date(jornadas[i + 1][0].date);
+    const cutoff = new Date(nextFirstDate.getTime() - TWO_DAYS_MS);
+    if (now < cutoff) {
+      displayIndex = i;
+      break;
+    }
+  }
 
+  const blocksToShow = jornadas.slice(displayIndex, displayIndex + 2);
+  if (blocksToShow.length === 0) return [];
+
+  const allShownGames = blocksToShow.flat();
   const teamIds = Array.from(
-    new Set(games.flatMap((g) => [g.home_team_id, g.away_team_id]))
+    new Set(allShownGames.flatMap((g) => [g.home_team_id, g.away_team_id]))
   );
-  const gameIds = games.map((g) => g.id);
+  const gameIds = allShownGames.map((g) => g.id);
 
   const [{ data: teams }, { data: predictions }] = await Promise.all([
     supabase.from("teams").select("*").in("id", teamIds),
@@ -65,29 +81,24 @@ async function getUpcomingByMatchday(): Promise<Matchday[]> {
   const teamById = new Map((teams ?? []).map((t) => [t.id, t]));
   const predByGame = new Map((predictions ?? []).map((p) => [p.game_id, p]));
 
-  const rows: Row[] = games.map((g) => ({
-    ...g,
-    home: teamById.get(g.home_team_id) ?? null,
-    away: teamById.get(g.away_team_id) ?? null,
-    prediction: predByGame.get(g.id) ?? null,
-  }));
-
   const fmtDate = (d: string) =>
     new Date(d).toLocaleDateString("es-ES", { day: "2-digit", month: "short" });
 
-  const matchdays: Matchday[] = [];
-  for (let i = 0; i < rows.length; i += gamesPerMatchday) {
-    const chunk = rows.slice(i, i + gamesPerMatchday);
-    if (chunk.length === 0) continue;
-    const first = fmtDate(chunk[0].date);
-    const last = fmtDate(chunk[chunk.length - 1].date);
-    matchdays.push({
-      label: i === 0 ? "Próxima jornada" : "Jornada siguiente",
+  return blocksToShow.map((block, idx) => {
+    const rows: Row[] = block.map((g) => ({
+      ...g,
+      home: teamById.get(g.home_team_id) ?? null,
+      away: teamById.get(g.away_team_id) ?? null,
+      prediction: predByGame.get(g.id) ?? null,
+    }));
+    const first = fmtDate(block[0].date);
+    const last = fmtDate(block[block.length - 1].date);
+    return {
+      label: idx === 0 ? "Esta jornada" : "Próxima jornada",
       dateRange: first === last ? first : `${first} – ${last}`,
-      games: chunk,
-    });
-  }
-  return matchdays;
+      games: rows,
+    };
+  });
 }
 
 export default async function HomePage() {
@@ -114,7 +125,7 @@ export default async function HomePage() {
         <div className="eyebrow">En directo</div>
         <h1 className="page-title">Próximos partidos</h1>
         <p className="page-sub">
-          Predicciones del modelo para las próximas {matchdays.length} jornadas de la
+          Predicciones del modelo para la jornada en curso y la siguiente de la
           Pro A. Haz clic en un partido para ver el resumen de ambos equipos.
         </p>
       </div>
@@ -125,64 +136,77 @@ export default async function HomePage() {
             <span className="matchday-title">{md.label}</span>
             <span className="matchday-dates">{md.dateRange}</span>
           </div>
-          {md.games.map((row) => (
-            <a className="panel game-link" key={row.id} href={`/partidos/${row.id}`}>
-              <div className="meta-row">
-                <span>
-                  {new Date(row.date).toLocaleDateString("es-ES", {
-                    weekday: "short",
-                    day: "2-digit",
-                    month: "short",
-                  })}
-                </span>
-              </div>
-
-              <div className="matchup">
-                <div className="matchup-team">
-                  {row.home && <TeamLogo teamId={row.home.id} name={row.home.name} size={26} />}
-                  <div className="team-name">{row.home?.name ?? "Equipo local"}</div>
+          {md.games.map((row) => {
+            const isFinal =
+              row.status === "final" && row.home_score != null && row.away_score != null;
+            return (
+              <a className="panel game-link" key={row.id} href={`/partidos/${row.id}`}>
+                <div className="meta-row">
+                  <span>
+                    {new Date(row.date).toLocaleDateString("es-ES", {
+                      weekday: "short",
+                      day: "2-digit",
+                      month: "short",
+                    })}
+                    {isFinal ? " · Finalizado" : ""}
+                  </span>
                 </div>
-                <div className="vs">vs</div>
-                <div className="matchup-team away">
-                  {row.away && <TeamLogo teamId={row.away.id} name={row.away.name} size={26} />}
-                  <div className="team-name away">{row.away?.name ?? "Equipo visitante"}</div>
-                </div>
-              </div>
 
-              {row.prediction ? (
-                <>
-                  <div className="prob-bar">
-                    <div
-                      className="prob-fill-home"
-                      style={{ width: `${row.prediction.home_win_prob * 100}%` }}
-                    />
-                    <div
-                      className="prob-fill-away"
-                      style={{ width: `${(1 - row.prediction.home_win_prob) * 100}%` }}
-                    />
+                <div className="matchup">
+                  <div className="matchup-team">
+                    {row.home && <TeamLogo teamId={row.home.id} name={row.home.name} size={26} />}
+                    <div className="team-name">{row.home?.name ?? "Equipo local"}</div>
                   </div>
-                  <div className="prob-labels">
-                    <span>
-                      <strong>{Math.round(row.prediction.home_win_prob * 100)}%</strong> local
-                    </span>
-                    {row.prediction.predicted_margin != null && (
-                      <span>
-                        margen estimado{" "}
-                        <strong>{row.prediction.predicted_margin.toFixed(1)}</strong>
+                  <div className="vs">
+                    {isFinal ? (
+                      <span className="scorefont" style={{ fontSize: 16, color: "var(--chalk)" }}>
+                        {row.home_score} – {row.away_score}
                       </span>
+                    ) : (
+                      "vs"
                     )}
-                    <span>
-                      <strong>{Math.round((1 - row.prediction.home_win_prob) * 100)}%</strong> visitante
-                    </span>
                   </div>
-                </>
-              ) : (
-                <div className="prob-labels" style={{ justifyContent: "center", marginTop: 12 }}>
-                  Sin predicción todavía
+                  <div className="matchup-team away">
+                    {row.away && <TeamLogo teamId={row.away.id} name={row.away.name} size={26} />}
+                    <div className="team-name away">{row.away?.name ?? "Equipo visitante"}</div>
+                  </div>
                 </div>
-              )}
-            </a>
-          ))}
+
+                {row.prediction ? (
+                  <>
+                    <div className="prob-bar">
+                      <div
+                        className="prob-fill-home"
+                        style={{ width: `${row.prediction.home_win_prob * 100}%` }}
+                      />
+                      <div
+                        className="prob-fill-away"
+                        style={{ width: `${(1 - row.prediction.home_win_prob) * 100}%` }}
+                      />
+                    </div>
+                    <div className="prob-labels">
+                      <span>
+                        <strong>{Math.round(row.prediction.home_win_prob * 100)}%</strong> local
+                      </span>
+                      {row.prediction.predicted_margin != null && (
+                        <span>
+                          margen estimado{" "}
+                          <strong>{row.prediction.predicted_margin.toFixed(1)}</strong>
+                        </span>
+                      )}
+                      <span>
+                        <strong>{Math.round((1 - row.prediction.home_win_prob) * 100)}%</strong> visitante
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="prob-labels" style={{ justifyContent: "center", marginTop: 12 }}>
+                    Sin predicción todavía
+                  </div>
+                )}
+              </a>
+            );
+          })}
         </div>
       ))}
     </div>
