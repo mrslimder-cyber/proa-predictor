@@ -219,7 +219,6 @@ def get_boxscore(game_url: str) -> dict:
     # La tabla "Estadísticas de los equipos" es la que tiene 2 filas (una por equipo)
     # y columnas tipo 2M, 2A, 3M, 3A, FGM... La identificamos por sus columnas.
     team_stats_table = None
-    four_factors_table = None
     player_tables = []
 
     for t in tables:
@@ -242,7 +241,6 @@ def get_boxscore(game_url: str) -> dict:
     if team_stats_table is not None:
         for i, (team_id, _slug) in enumerate(team_order):
             row = team_stats_table.iloc[i]
-            ff_row = four_factors_table.iloc[i]
             team_stats.append({
                 "team_id": team_id,
                 "is_home": (i == 0),
