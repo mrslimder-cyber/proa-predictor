@@ -36,18 +36,25 @@ alimentan la web vía Supabase) -- viven en su propia tabla
 Python. No requiere ningún cambio en supabase/schema.sql ni en el
 frontend.
 
+CAMBIO: mismo fallback que en scraper/proballers_scraper.py.get_season_games()
+-- si la fila de un partido en esta ficha no trae el marcador como texto
+plano (Proballers ha estado retirando eso de varias páginas del calendario,
+dejando solo un link "Avance del juego"/"Ver resultado") y el partido ya
+se jugó, vamos a la página de ESE partido a leer el marcador ahí.
+
 Uso:
     from scraper.bridge import backfill_new_teams
     backfill_new_teams()   # se llama automáticamente al final de scraper.ingest.run_all_seasons()
 """
 import re
+from datetime import datetime
 
 from config import BRIDGE_GAMES_PER_TEAM, CURRENT_SEASON, ELO_INITIAL_RATING
 from db.database import get_session
 from db.models import BridgeGameResult, Game, Team
 from config import PROBALLERS_BASE
 from scraper.proballers_scraper import (
-    GAME_HREF_RE, _extract_date_from_href, _get,
+    GAME_HREF_RE, _extract_date_from_href, _get, _get_final_score_from_game_page,
 )
 
 _GHOST_TEAM_ID = -1  # id "fantasma" para el rival en partidos puente; nunca persiste entre llamadas
@@ -110,10 +117,19 @@ def get_team_bridge_games(team_id: int, team_slug: str, season: str, max_games: 
         # (récord, tipo "9-25") va DESPUÉS del resultado, así que el
         # primer match de re.search ya es el marcador real.
         score_match = re.search(r"\b(\d{2,3})\s*[-–]\s*(\d{2,3})\b", text)
-        if not score_match:
-            continue  # sin marcador todavía (partido futuro) -> lo ignoramos
+        if score_match:
+            home_score, away_score = int(score_match.group(1)), int(score_match.group(2))
+        elif game_date < datetime.now():
+            # NUEVO: esta fila no trae marcador como texto y el partido ya
+            # se jugó -- lo buscamos en la página de ESE partido (mismo
+            # fallback que en get_season_games(), ver proballers_scraper.py).
+            game_url = f"https://www.proballers.com{link['href']}" if link["href"].startswith("/") else link["href"]
+            home_score, away_score = _get_final_score_from_game_page(game_url)
+            if home_score is None:
+                continue  # no se pudo determinar el marcador, se omite
+        else:
+            continue  # partido futuro, sin marcador todavía -> se ignora
 
-        home_score, away_score = int(score_match.group(1)), int(score_match.group(2))
         team_score, opp_score = (home_score, away_score) if is_home else (away_score, home_score)
 
         results.append({

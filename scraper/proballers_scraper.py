@@ -14,6 +14,20 @@ IMPORTANTE: si Proballers cambia el marcado HTML, lo que más probablemente
 se rompa son las funciones que extraen IDs de equipo/jugador vía regex
 sobre los href (`_extract_id_from_href`). Las tablas de estadísticas
 (vía read_html) son más resistentes a cambios de diseño.
+
+CAMBIO (corrección del bug "no se guardan estadísticas de partidos"):
+Proballers dejó de incluir el marcador como texto plano en la fila de
+cada partido del CALENDARIO de la liga (season_calendar_url). Antes esa
+fila tenía algo como ".. 69-71 .." en su texto; ahora la celda de
+"Resultado" es siempre un link ("Avance del juego" / "Ver resultado"),
+tanto para partidos futuros como ya finalizados. Como get_season_games()
+decidía status="final" únicamente a partir de ese "NN-NN" en el texto,
+todos los partidos se quedaban marcados "scheduled" para siempre y
+scraper/ingest.py nunca llegaba a pedir el boxscore -> team_game_stats
+vacía. La corrección: cuando la fila no trae marcador Y la fecha del
+partido ya pasó, visitamos la página de ESE partido concreto y leemos el
+marcador ahí, donde Proballers lo muestra junto a la palabra "Final"
+(ver _get_final_score_from_game_page).
 """
 import io
 import re
@@ -35,6 +49,11 @@ from config import (
 
 TEAM_HREF_RE = re.compile(r"/equipo/(\d+)/([^/]+)/")
 GAME_HREF_RE = re.compile(r"/partido(?:-preview)?/(\d+)/([^/\"]+)")
+
+# Marcador "final" tal y como aparece en la página de UN partido concreto ya
+# jugado, ej. "81 - 89 Final". Se usa como fallback cuando la fila del
+# calendario ya no trae el marcador como texto (ver nota arriba).
+FINAL_SCORE_RE = re.compile(r"\b(\d{2,3})\s*[-–]\s*(\d{2,3})\b\s*Final", re.IGNORECASE)
 
 SPANISH_MONTHS = {
     "ene": 1, "feb": 2, "mar": 3, "abr": 4, "may": 5, "jun": 6,
@@ -119,6 +138,30 @@ def _find_game_block(link):
     return None
 
 
+def _get_final_score_from_game_page(game_url: str):
+    """
+    Visita la página de UN partido concreto y devuelve (home_score,
+    away_score) leyendo el patrón "NN-NN Final" que Proballers muestra ahí
+    para partidos ya finalizados (confirmado en vivo, ej. "81 - 89 Final").
+
+    Devuelve (None, None) si el partido todavía no se ha jugado, o si no
+    se pudo encontrar el marcador (p. ej. si Proballers vuelve a cambiar
+    el marcado HTML) -- en ese caso el partido se deja como "scheduled" en
+    vez de romper todo el scraping.
+    """
+    try:
+        soup = _get(game_url)
+    except Exception as e:
+        print(f"  [WARN] no se pudo abrir la página del partido para leer el marcador ({game_url}): {e}")
+        return None, None
+
+    text = soup.get_text(" ", strip=True)
+    m = FINAL_SCORE_RE.search(text)
+    if not m:
+        return None, None
+    return int(m.group(1)), int(m.group(2))
+
+
 def get_season_games(season: str = CURRENT_SEASON) -> list[dict]:
     """
     Recorre el calendario de la liga y devuelve una lista de dicts:
@@ -126,6 +169,14 @@ def get_season_games(season: str = CURRENT_SEASON) -> list[dict]:
          away_team_name, home_score, away_score, status, boxscore_url}
 
     Los partidos ya jugados traen marcador; los futuros no (status='scheduled').
+
+    OJO: el calendario de la liga ya NO incluye el marcador como texto
+    plano en la fila de cada partido (ver nota al principio del archivo).
+    Cuando eso pasa y la fecha del partido ya pasó, se visita la página
+    de ESE partido para leer el marcador ahí (_get_final_score_from_game_page).
+    Esto añade una request extra por cada partido finalizado la primera
+    vez, pero scraper/ingest.py es idempotente (only_new=True), así que
+    en ejecuciones futuras solo se paga por partidos nuevos.
     """
     soup = _get(season_calendar_url(season))
     games = []
@@ -137,6 +188,7 @@ def get_season_games(season: str = CURRENT_SEASON) -> list[dict]:
     game_links = soup.find_all("a", href=GAME_HREF_RE)
 
     seen_game_ids = set()
+    fallback_used = 0
     for link in game_links:
         m = GAME_HREF_RE.search(link["href"])
         if not m:
@@ -163,6 +215,9 @@ def get_season_games(season: str = CURRENT_SEASON) -> list[dict]:
         # Marcador: buscamos específicamente el patrón "NN-NN" (con guion,
         # sin dos puntos) para no confundirlo con la hora del partido tipo
         # "20:00", que también tiene 2 números de 2 dígitos pegados.
+        # Desde que Proballers cambió el calendario, esto solo encuentra
+        # algo para partidos donde el marcador SÍ sigue viniendo inline
+        # (ver fallback más abajo para cuando no es así).
         score_match = re.search(r"\b(\d{2,3})\s*[-–]\s*(\d{2,3})\b", block.get_text(" ", strip=True))
         home_score = int(score_match.group(1)) if score_match else None
         away_score = int(score_match.group(2)) if score_match else None
@@ -179,6 +234,17 @@ def get_season_games(season: str = CURRENT_SEASON) -> list[dict]:
             print(f"  [WARN] no se pudo extraer fecha del partido {game_id}, se omite.")
             continue
 
+        boxscore_url = f"https://www.proballers.com{link['href']}" if link["href"].startswith("/") else link["href"]
+
+        # NUEVO: fallback cuando el calendario no trae marcador inline.
+        # Solo lo intentamos para partidos cuya fecha YA PASÓ -- para
+        # partidos futuros, la ausencia de marcador es simplemente correcta
+        # y no hace falta gastar una request extra comprobándolo.
+        if home_score is None and game_date < datetime.now():
+            home_score, away_score = _get_final_score_from_game_page(boxscore_url)
+            if home_score is not None:
+                fallback_used += 1
+
         games.append({
             "game_id": game_id,
             "date": game_date,
@@ -189,8 +255,12 @@ def get_season_games(season: str = CURRENT_SEASON) -> list[dict]:
             "home_score": home_score,
             "away_score": away_score,
             "status": "final" if home_score is not None else "scheduled",
-            "boxscore_url": f"https://www.proballers.com{link['href']}" if link["href"].startswith("/") else link["href"],
+            "boxscore_url": boxscore_url,
         })
+
+    if fallback_used:
+        print(f"  {fallback_used} marcador(es) recuperado(s) visitando la página del partido "
+              f"(el calendario ya no los trae como texto plano).")
 
     return games
 
@@ -219,7 +289,6 @@ def get_boxscore(game_url: str) -> dict:
     # La tabla "Estadísticas de los equipos" es la que tiene 2 filas (una por equipo)
     # y columnas tipo 2M, 2A, 3M, 3A, FGM... La identificamos por sus columnas.
     team_stats_table = None
-    four_factors_table = None
     player_tables = []
 
     for t in tables:
@@ -242,7 +311,6 @@ def get_boxscore(game_url: str) -> dict:
     if team_stats_table is not None:
         for i, (team_id, _slug) in enumerate(team_order):
             row = team_stats_table.iloc[i]
-            ff_row = four_factors_table.iloc[i]
             team_stats.append({
                 "team_id": team_id,
                 "is_home": (i == 0),
@@ -269,6 +337,14 @@ def get_boxscore(game_url: str) -> dict:
         for i, own in enumerate(team_stats):
             opp = team_stats[1 - i]
             own.update(_team_four_factors(own, opp))
+
+    if team_stats_table is None:
+        # NUEVO: si esto se ve con frecuencia tras el cambio de calendario,
+        # es señal de que Proballers también cambió la maquetación de la
+        # PÁGINA del partido (no solo el calendario), y habría que revisar
+        # aquí qué nombres de columna usa ahora la tabla de equipos.
+        print(f"  [WARN] no se encontró la tabla de estadísticas de equipo en {game_url} "
+              f"(¿cambió también el HTML de la página del partido?).")
 
     # Stats por jugador: cada tabla de jugadores va precedida por el nombre
     # del equipo; asumimos que aparecen en el mismo orden que team_order
