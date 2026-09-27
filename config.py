@@ -63,7 +63,7 @@ PROBALLERS_SCHEDULE_URL = f"{PROBALLERS_LEAGUE_URL}/calendario"
 # agresivos. Ajusta el user-agent si el sitio empieza a devolver 403.
 REQUEST_HEADERS = {
     "User-Agent": (
-        "Mozilla/5.0 (compatible; ProAPredictorBot/1.0; "
+        "Mozilla/5.0 (compatible; ProAPredictor/1.0; "
         "+https://github.com/tu-usuario/proa-predictor)"
     ),
     "Accept-Language": "es-ES,es;q=0.9",
