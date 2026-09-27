@@ -8,6 +8,13 @@
 # Postgres/Supabase en vez de SQLite local. Si usas SQLite, el propio commit
 # del archivo .db al repo sirve como "persistencia" simple entre ejecuciones
 # (no ideal a largo plazo, pero válido para empezar).
+#
+# NUEVO: la temporada en curso se ingiere desde 2basketballbundesliga.de
+# (ver scraper/bundesliga_scraper.py) y su boxscore se saca con un
+# navegador headless (Playwright), por eso el paso "Instalar Playwright"
+# de aquí abajo es imprescindible -- sin él, la ingesta de boxscore de la
+# temporada en curso fallará silenciosamente partido a partido (el
+# pipeline sigue funcionando, pero sin Four Factors reales).
 
 name: ProA Predictor Pipeline
 
@@ -28,6 +35,9 @@ jobs:
 
       - name: Instalar dependencias
         run: pip install -r requirements.txt
+
+      - name: Instalar navegador para boxscore en vivo
+        run: playwright install --with-deps chromium
 
       - name: Ejecutar pipeline
         env:
