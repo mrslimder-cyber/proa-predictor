@@ -398,6 +398,10 @@ def _team_four_factors(own: dict, opp: dict) -> dict:
     los 4 factores para un equipo, los otros 2 para el rival), así que ya
     no la usamos como fuente.
     """
+    required_own = ("fg2_made", "fg3_made", "fg2_att", "fg3_att", "ft_att", "tov", "oreb")
+    if any(own.get(k) is None for k in required_own) or opp.get("dreb") is None:
+        return {"efg_pct": None, "tov_pct": None, "orb_pct": None, "ft_rate": None}
+
     fgm = own["fg2_made"] + own["fg3_made"]
     fga = own["fg2_att"] + own["fg3_att"]
     efg_pct = (fgm + 0.5 * own["fg3_made"]) / fga if fga else None

@@ -181,4 +181,12 @@ def get_boxscore_live(game_id: int) -> dict:
                 "ft_made": ft_made, "ft_att": ft_att,
             })
 
+    def _is_empty_row(row: dict) -> bool:
+        return all(v in (0, None) for v in row.values())
+
+    if team_stats and all(_is_empty_row(row) for row in team_stats):
+        print(f"  [WARN] boxscore en vivo de {game_id} parece vacío "
+            f"(¿widget sin datos post-partido?), se omite por ahora.")
+        return {"team_stats": [], "player_stats": []}
+
     return {"team_stats": team_stats, "player_stats": player_stats}

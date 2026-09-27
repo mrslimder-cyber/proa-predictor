@@ -291,10 +291,14 @@ def run_current_season_from_bundesliga(season: str = CURRENT_SEASON):
         to_scrape = [g for g in games if g["status"] == "final" and g["game_id"] not in existing_stats_ids]
         print(f"  {len(to_scrape)} boxscores en vivo nuevos por descargar (de {finished} finalizados).")
         for g in tqdm(to_scrape, desc=f"Boxscores en vivo {season}"):
-            _ingest_live_boxscore(
-                session, g["game_id"],
-                team_ids[g["home_team_name"]], team_ids[g["away_team_name"]],
-            )
+            try:
+                _ingest_live_boxscore(
+                    session, g["game_id"],
+                    team_ids[g["home_team_name"]], team_ids[g["away_team_name"]],
+                )
+            except Exception as e:
+                print(f"  [WARN] fallo procesando boxscore en vivo del partido {g['game_id']}: {e}")
+                continue
 
     print(f"Ingesta de {season} (2basketballbundesliga.de) completada.")
 
