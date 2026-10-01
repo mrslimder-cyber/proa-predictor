@@ -19,7 +19,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </div>
           {children}
           <footer>
-            Datos vía Proballers · modelo XGBoost entrenado con Elo, Four Factors
+            Datos vía RealGM · modelo XGBoost entrenado con Elo, Four Factors
             y forma reciente.
           </footer>
         </div>

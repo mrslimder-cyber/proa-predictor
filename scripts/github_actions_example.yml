@@ -1,20 +1,18 @@
 # Copia este archivo a .github/workflows/pipeline.yml en tu repo.
 #
-# Corre el pipeline automáticamente:
+# Corre el pipeline automaticamente:
 #   - Cada domingo y lunes a las 23:00 UTC (tras las jornadas de fin de semana)
-#   - También se puede lanzar a mano desde la pestaña "Actions" de GitHub
+#   - Tambien se puede lanzar a mano desde la pestana "Actions" de GitHub
 #
 # Requiere que definas el secreto DATABASE_URL en Settings > Secrets si usas
 # Postgres/Supabase en vez de SQLite local. Si usas SQLite, el propio commit
 # del archivo .db al repo sirve como "persistencia" simple entre ejecuciones
-# (no ideal a largo plazo, pero válido para empezar).
+# (no ideal a largo plazo, pero valido para empezar).
 #
-# NUEVO: la temporada en curso se ingiere desde 2basketballbundesliga.de
-# (ver scraper/bundesliga_scraper.py) y su boxscore se saca con un
-# navegador headless (Playwright), por eso el paso "Instalar Playwright"
-# de aquí abajo es imprescindible -- sin él, la ingesta de boxscore de la
-# temporada en curso fallará silenciosamente partido a partido (el
-# pipeline sigue funcionando, pero sin Four Factors reales).
+# CAMBIO: la ingesta (historico + temporada en curso) usa ahora una unica
+# fuente, RealGM (ver scraper/realgm_scraper.py), que es HTML estatico via
+# requests+BeautifulSoup -- ya NO hace falta Playwright/navegador headless,
+# así que ese paso se ha eliminado de este workflow.
 
 name: ProA Predictor Pipeline
 
@@ -36,9 +34,6 @@ jobs:
       - name: Instalar dependencias
         run: pip install -r requirements.txt
 
-      - name: Instalar navegador para boxscore en vivo
-        run: playwright install --with-deps chromium
-
       - name: Ejecutar pipeline
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
@@ -49,5 +44,5 @@ jobs:
           git config user.name "proa-predictor-bot"
           git config user.email "bot@users.noreply.github.com"
           git add data/ charts/output/ models/artifacts/
-          git diff --staged --quiet || git commit -m "Actualización automática tras jornada"
+          git diff --staged --quiet || git commit -m "Actualizacion automatica tras jornada"
           git push

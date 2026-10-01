@@ -2,154 +2,56 @@
 scraper/bridge.py
 
 Partidos "puente" para equipos NUEVOS en la temporada actual de Pro A
-(ascendidos desde ProB o descendidos desde la BBL), que no tienen NINGÚN
-partido en nuestra base de datos todavía.
+(ascendidos desde ProB o descendidos desde la BBL), que no tienen NINGUN
+partido en nuestra base de datos todavia. Sin esto, un equipo nuevo
+necesita MIN_GAMES_FOR_FEATURES partidos reales de Pro A antes de que el
+pipeline pueda calcular sus features (medias moviles, Elo con historico).
 
-Sin esto, el pipeline necesita MIN_GAMES_FOR_FEATURES partidos de Pro A
-jugados antes de poder calcular features (medias móviles, Elo con
-histórico) para un equipo nuevo -- así que su primer partido real de Pro A
-se queda sin predicción, aunque el equipo sí tenga forma reciente real
-(solo que en otra competición).
+CAMBIO IMPORTANTE: la implementacion anterior (get_team_bridge_games)
+leia la ficha de equipo en Proballers, fuente que ahora esta bloqueada
+con 403 de forma sistematica (ver scraper/realgm_scraper.py). Todavia NO
+hay una forma verificada de sacar el calendario de la temporada anterior
+de un equipo recien ascendido/descendido desde RealGM, porque para eso
+hace falta primero saber en que liga de RealGM jugaba ese equipo la
+temporada pasada (BBL = liga 15, Pro B = liga 101, ...) y resolverlo
+automaticamente no esta aun implementado.
 
-Estrategia: para cada equipo nuevo, scrapeamos sus últimos
-BRIDGE_GAMES_PER_TEAM partidos de la TEMPORADA ANTERIOR desde la ficha
-propia de ESE equipo en Proballers (no desde el calendario de la liga
-Pro A) -- esa ficha lista los partidos del equipo en CUALQUIER competición
-en la que jugara (BBL, ProB, Champions League...). Confirmado en vivo con
-el caso real de Heidelberg (id 1774), descendido de la BBL a la Pro A
-2026-2027: su ficha en
-https://www.proballers.com/es/baloncesto/equipo/1774/mlp-academics-heidelberg/calendario/2025
-lista sus 34 partidos de "Germany - easyCredit BBL" 2025-2026.
+Por eso backfill_new_teams() se deja como NO-OP informativo en vez de
+una integracion a medio verificar: un equipo nuevo simplemente empieza
+sin historico (igual que si este modulo no existiera) y acumula Elo y
+medias moviles partido a partido real, como cualquier equipo nuevo en
+MIN_GAMES_FOR_FEATURES partidos.
 
-Solo necesitamos resultado + fecha, no boxscore completo, así que esto es
-mucho más ligero que el scraping normal de temporada (no se llama a
-get_boxscore() aquí).
+Si quieres retomar esto: la ficha de un equipo en RealGM si lista su
+historico temporada a temporada con liga y record, por ejemplo
+https://basketball.realgm.com/international/league/101/German-Pro-B/team/1174/SC-Rist-Wedel
+-- el primer paso seria resolver automaticamente, a partir del nombre
+del equipo nuevo, en que liga+id jugo la temporada anterior, y desde ahi
+leer su calendario de esa temporada/liga.
 
-Al rival de esos partidos puente NO lo modelamos (normalmente es un
-equipo que nunca jugará en Pro A): se trata como de fuerza media (Elo
-inicial) solo para poder mover el rating de NUESTRO equipo con esos
-resultados.
-
-Estos partidos NO se guardan en `games`/`team_game_stats` (esas tablas
-alimentan la web vía Supabase) -- viven en su propia tabla
-`bridge_game_results`, de uso exclusivamente interno del pipeline de
-Python. No requiere ningún cambio en supabase/schema.sql ni en el
-frontend.
-
-CAMBIO: mismo fallback que en scraper/proballers_scraper.py.get_season_games()
--- si la fila de un partido en esta ficha no trae el marcador como texto
-plano (Proballers ha estado retirando eso de varias páginas del calendario,
-dejando solo un link "Avance del juego"/"Ver resultado") y el partido ya
-se jugó, vamos a la página de ESE partido a leer el marcador ahí.
+seed_bridge_games() se mantiene SIN cambios funcionales: solo LEE lo que
+ya hubiera en bridge_game_results (filas guardadas antes de este
+cambio, si las hay), asi que un equipo que ya tenia partidos puente
+guardados los sigue aprovechando con normalidad.
 
 Uso:
-    from scraper.bridge import backfill_new_teams
-    backfill_new_teams()   # se llama automáticamente al final de scraper.ingest.run_all_seasons()
+    from scraper.bridge import backfill_new_teams, seed_bridge_games
+    backfill_new_teams()   # hoy: solo informa, no descarga nada
+    seed_bridge_games(team_states, elo, TeamState)  # como antes
 """
-import re
-from datetime import datetime
-
-from config import BRIDGE_GAMES_PER_TEAM, CURRENT_SEASON, ELO_INITIAL_RATING
+from config import CURRENT_SEASON, ELO_INITIAL_RATING
 from db.database import get_session
-from db.models import BridgeGameResult, Game, Team
-from config import PROBALLERS_BASE
-from scraper.proballers_scraper import (
-    GAME_HREF_RE, _extract_date_from_href, _get, _get_final_score_from_game_page,
-)
+from db.models import BridgeGameResult, Game
 
 _GHOST_TEAM_ID = -1  # id "fantasma" para el rival en partidos puente; nunca persiste entre llamadas
 
 
-def get_team_bridge_games(team_id: int, team_slug: str, season: str, max_games: int = BRIDGE_GAMES_PER_TEAM) -> list[dict]:
+def backfill_new_teams(season: str = CURRENT_SEASON, max_games: int | None = None):
     """
-    Devuelve hasta `max_games` partidos (los más recientes, orden
-    cronológico) que jugó `team_id` en `season`, en cualquier competición,
-    leyendo la ficha propia del equipo en Proballers.
-
-    OJO: el slug de un equipo puede NO ser el mismo entre temporadas o
-    competiciones distintas (p.ej. "heidelberg" en la Pro A 2026-2027
-    frente a "mlp-academics-heidelberg" en la BBL 2025-2026, mismo id de
-    equipo). Asumimos que Proballers resuelve la página por id y usa el
-    slug solo para SEO/estética -- así es como se comporta la mayoría de
-    sitios con este patrón de URL. Si ves warnings de fallo de carga aquí,
-    entra al navegador a la ficha del equipo en cuestión (busca su nombre
-    en Proballers), copia el slug real de esa temporada/competición y
-    ajusta esta función si hiciera falta.
-    """
-    start_year = season.split("-")[0]
-    url = f"{PROBALLERS_BASE}/baloncesto/equipo/{team_id}/{team_slug}/calendario/{start_year}"
-
-    try:
-        soup = _get(url)
-    except Exception as e:
-        print(f"  [WARN] no se pudo cargar el calendario puente de {team_slug} ({url}): {e}")
-        return []
-
-    game_links = soup.find_all("a", href=GAME_HREF_RE)
-    seen_ids = set()
-    results = []
-
-    for link in game_links:
-        m = GAME_HREF_RE.search(link["href"])
-        if not m:
-            continue
-        game_id, slug = int(m.group(1)), m.group(2)
-        if game_id in seen_ids:
-            continue
-        seen_ids.add(game_id)
-
-        game_date = _extract_date_from_href(link["href"])
-        if game_date is None:
-            continue
-
-        # El slug del partido es "<home>-<away>-YYYY-MM-DD"; si empieza
-        # por el slug de nuestro equipo, jugó en casa.
-        is_home = slug.startswith(team_slug + "-")
-
-        block = link.find_parent("tr")
-        if block is None:
-            continue
-        text = block.get_text(" ", strip=True)
-        # Igual que en get_season_games(): buscamos específicamente el
-        # patrón "NN-NN" del marcador. En esta tabla la columna "Hora"
-        # (16:30, con ":") va ANTES que "Resultado" en el texto, así que
-        # no hay riesgo de confundirla con la hora; la columna "V-P"
-        # (récord, tipo "9-25") va DESPUÉS del resultado, así que el
-        # primer match de re.search ya es el marcador real.
-        score_match = re.search(r"\b(\d{2,3})\s*[-–]\s*(\d{2,3})\b", text)
-        if score_match:
-            home_score, away_score = int(score_match.group(1)), int(score_match.group(2))
-        elif game_date < datetime.now():
-            # NUEVO: esta fila no trae marcador como texto y el partido ya
-            # se jugó -- lo buscamos en la página de ESE partido (mismo
-            # fallback que en get_season_games(), ver proballers_scraper.py).
-            game_url = f"https://www.proballers.com{link['href']}" if link["href"].startswith("/") else link["href"]
-            home_score, away_score = _get_final_score_from_game_page(game_url)
-            if home_score is None:
-                continue  # no se pudo determinar el marcador, se omite
-        else:
-            continue  # partido futuro, sin marcador todavía -> se ignora
-
-        team_score, opp_score = (home_score, away_score) if is_home else (away_score, home_score)
-
-        results.append({
-            "game_id": game_id,
-            "date": game_date,
-            "is_home": is_home,
-            "team_score": team_score,
-            "opp_score": opp_score,
-        })
-
-    results.sort(key=lambda r: r["date"])
-    return results[-max_games:]
-
-
-def backfill_new_teams(season: str = CURRENT_SEASON, max_games: int = BRIDGE_GAMES_PER_TEAM):
-    """
-    Detecta equipos que juegan `season` (normalmente la temporada actual
-    de Pro A) y no tienen NINGÚN partido en `games` de otra temporada, y
-    les descarga partidos puente de la temporada anterior. Idempotente:
-    si un equipo ya tiene partidos puente guardados, se salta.
+    DESHABILITADO (ver cabecera del modulo): no descarga nada. Solo
+    detecta equipos nuevos en `season` sin ningun partido en otra
+    temporada y lo informa por consola, para que sepas que ese equipo
+    se va a quedar sin prediccion hasta acumular historico real.
     """
     with get_session() as session:
         current_team_ids = {
@@ -162,52 +64,21 @@ def backfill_new_teams(season: str = CURRENT_SEASON, max_games: int = BRIDGE_GAM
         } | {
             tid for (tid,) in session.query(Game.away_team_id).filter(Game.season != season)
         }
-        already_bridged = {tid for (tid,) in session.query(BridgeGameResult.team_id).distinct()}
+        new_team_ids = current_team_ids - teams_with_history
 
-        new_team_ids = current_team_ids - teams_with_history - already_bridged
-        teams_by_id = {t.id: t for t in session.query(Team).filter(Team.id.in_(new_team_ids)).all()}
-
-    if not new_team_ids:
-        print("No hay equipos nuevos sin histórico pendientes de partidos puente.")
-        return
-
-    prev_start_year = int(season.split("-")[0]) - 1
-    prev_season = f"{prev_start_year}-{prev_start_year + 1}"
-
-    print(f"{len(new_team_ids)} equipo(s) nuevo(s) en {season} sin histórico en la BD: "
-          f"buscando sus últimos {max_games} partidos de {prev_season} (cualquier competición)...")
-
-    with get_session() as session:
-        for team_id in new_team_ids:
-            team = teams_by_id.get(team_id)
-            if team is None:
-                continue
-            games = get_team_bridge_games(team_id, team.slug, prev_season, max_games=max_games)
-            if not games:
-                print(f"  [WARN] sin partidos puente para {team.name} ({prev_season}). "
-                      f"Su primer partido de Pro A seguirá sin predicción hasta acumular "
-                      f"histórico real (revisa el slug si crees que sí jugó esa temporada).")
-                continue
-            for g in games:
-                session.merge(BridgeGameResult(
-                    team_id=team_id,
-                    date=g["date"],
-                    is_home=g["is_home"],
-                    team_score=g["team_score"],
-                    opp_score=g["opp_score"],
-                    source_season=prev_season,
-                ))
-            print(f"  {team.name}: {len(games)} partidos puente guardados (de {prev_season}).")
+    if new_team_ids:
+        print(f"  [INFO] {len(new_team_ids)} equipo(s) nuevo(s) en {season} sin historico en la BD: "
+              f"partidos puente deshabilitados (ver cabecera de scraper/bridge.py). "
+              f"Acumularan Elo/medias moviles partido a partido real, sin precalentar.")
 
 
 def seed_bridge_games(team_states: dict, elo, team_state_factory):
     """
     Precalienta `team_states` (dict team_id -> TeamState) y `elo`
-    (EloSystem) con los partidos puente guardados, ANTES de procesar el
-    calendario real de Pro A. `team_state_factory` es la clase/función que
-    crea un TeamState vacío (se recibe como parámetro para no importar
-    features.feature_engineering aquí y evitar un import circular, ya que
-    ese módulo es quien importa este).
+    (EloSystem) con los partidos puente YA GUARDADOS en
+    bridge_game_results, si los hay. Sin cambios respecto a la version
+    anterior -- `team_state_factory` se recibe como parametro para
+    evitar un import circular con features.feature_engineering.
     """
     with get_session() as session:
         bridge_rows = (
@@ -219,8 +90,6 @@ def seed_bridge_games(team_states: dict, elo, team_state_factory):
     for row in bridge_rows:
         state = team_states.setdefault(row.team_id, team_state_factory())
 
-        # Rival "fantasma": rating medio, no persiste entre partidos puente
-        # ni contamina el rating de ningún equipo real de Pro A.
         elo.ratings[_GHOST_TEAM_ID] = ELO_INITIAL_RATING
         if row.is_home:
             elo.update(row.team_id, _GHOST_TEAM_ID, row.team_score, row.opp_score)
@@ -235,7 +104,3 @@ def seed_bridge_games(team_states: dict, elo, team_state_factory):
         state.results.append(int(row.team_score > row.opp_score))
         state.is_home_flags.append(row.is_home)
         state.last_game_date = row.date
-        # Four Factors (efg/tov/orb/ft_rate) no disponibles en partidos
-        # puente -- no scrapeamos boxscore aquí a propósito, para mantener
-        # esto ligero. Sus medias móviles se comportarán igual que con
-        # cualquier partido donde esas stats faltan (NaN).
