@@ -26,6 +26,13 @@ Por que RealGM sirve para TODO a la vez:
     tampoco hace falta el emparejamiento por nombre normalizado que
     usaba _resolve_team_ids_by_name() en el ingest.py anterior.
 
+CORRECCION LOCAL/VISITANTE: RealGM escribe los partidos como
+"VISITANTE @ LOCAL" (el slug de la URL es '<visitante>-at-<local>', p.ej.
+.../Walter-Tigers-Tubingen-at-HARKO-Merlins-Crailsheim/525469 es Tubingen
+visitando a Crailsheim). Antes se asumia que el primer link de equipo era
+el LOCAL, lo que invertia local/visitante en TODOS los partidos. Ahora el
+orden se decide leyendo el slug del partido (_split_home_away).
+
 IMPORTANTE -- sin verificar en produccion contra cientos de partidos
 reales, revisalo en tu primera ejecucion (mismo espiritu que los avisos
 que ya tenia proballers_scraper.py con sus propios patrones de URL):
@@ -34,11 +41,11 @@ que ya tenia proballers_scraper.py con sus propios patrones de URL):
      SEASON_END_MONTH_DAY mas abajo): aproximado a "1 sep - 30 jun" para
      cubrir regular season + playoffs. Si tu temporada real empieza o
      termina en fechas muy distintas, ajusta esas dos constantes.
-  2. Se asume que en cada bloque de partido el PRIMER link de equipo es
-     el LOCAL y el segundo el VISITANTE (asi aparece en el titulo del
-     boxscore, p.ej. "HARKO Merlins Crailsheim 81, ETB Miners Essen 67"
-     con HARKO de local) -- confirmado en un boxscore real concreto, no
-     en una muestra grande.
+  2. En el boxscore se asume que las tablas (marcador "Final", Four
+     Factors, jugadores) aparecen en el mismo orden que los links de
+     equipo de la pagina (visitante primero, local despues). Local/
+     visitante se decide por el slug de la URL, pero el emparejamiento
+     tabla<->equipo sigue siendo por posicion.
   3. _find_team_totals_row() identifica la fila de totales de un equipo
      dentro de su tabla de jugadores por tener "Min" >= 200 (duracion
      reglamentaria de un partido; cada prorroga suma 25 min mas). Si ves
@@ -61,12 +68,16 @@ import io
 import re
 import time
 from datetime import datetime, timedelta
+from urllib.parse import unquote
 
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 
-from config import REALGM_LEAGUE_ID, REALGM_LEAGUE_URL, REQUEST_HEADERS, REQUEST_DELAY_SECONDS, REQUEST_TIMEOUT
+from config import (
+    REALGM_LEAGUE_ID, REALGM_LEAGUE_URL, REQUEST_HEADERS,
+    REQUEST_DELAY_SECONDS, REQUEST_TIMEOUT, TEAM_NAME_OVERRIDES,
+)
 
 TEAM_HREF_RE = re.compile(
     rf"/international/league/{REALGM_LEAGUE_ID}/German-Pro-A/team/(\d+)/([^/\"]+)"
@@ -95,6 +106,35 @@ def _get(url: str) -> BeautifulSoup:
     return BeautifulSoup(resp.text, "lxml")
 
 
+def _unique_teams(links) -> list[tuple[int, str]]:
+    """(team_id, slug) sin duplicados y en orden de aparicion. El link del
+    logo y el del texto de un mismo equipo comparten id, asi que sin esto
+    el mismo equipo podia contarse dos veces (como local Y visitante)."""
+    out, seen = [], set()
+    for a in links:
+        m = TEAM_HREF_RE.search(a["href"])
+        if m and int(m.group(1)) not in seen:
+            seen.add(int(m.group(1)))
+            out.append((int(m.group(1)), unquote(m.group(2))))
+    return out
+
+
+def _display_name(team_id: int, slug: str) -> str:
+    """Nombre visible: override con acentos si existe, si no el slug."""
+    return TEAM_NAME_OVERRIDES.get(team_id) or slug.replace("-", " ")
+
+
+def _split_home_away(game_slug: str, a: tuple[int, str], b: tuple[int, str]):
+    """El slug del partido es '<visitante>-at-<local>'. Devuelve
+    (local, visitante) como tuplas (team_id, slug)."""
+    game_slug = unquote(game_slug)
+    if game_slug.startswith(f"{a[1]}-at-"):
+        return b, a
+    if game_slug.startswith(f"{b[1]}-at-"):
+        return a, b
+    return b, a  # RealGM lista siempre "visitante @ local"
+
+
 def _season_date_range(season: str) -> tuple[datetime, datetime]:
     start_year = int(season.split("-")[0])
     end_year = start_year + 1
@@ -105,15 +145,18 @@ def _season_date_range(season: str) -> tuple[datetime, datetime]:
 
 def _find_game_block(link):
     """Sube por los ancestros del link de partido hasta el contenedor
-    MINIMO que ya incluye los 2 links de equipo de ESE partido (mismo
-    enfoque que usaba proballers_scraper._find_game_block: parar en
-    cuanto haya exactamente 1 link de partido y 2+ de equipo evita subir
+    MINIMO que ya incluye los 2 equipos de ESE partido (mismo enfoque que
+    usaba proballers_scraper._find_game_block: parar en cuanto haya
+    exactamente 1 link de partido y 2+ equipos distintos evita subir
     hasta un contenedor que mezcle varios partidos del mismo dia)."""
     node = link.parent
     while node is not None:
-        team_links = node.find_all("a", href=TEAM_HREF_RE)
+        team_ids = {
+            int(TEAM_HREF_RE.search(t["href"]).group(1))
+            for t in node.find_all("a", href=TEAM_HREF_RE)
+        }
         game_links = node.find_all("a", href=GAME_HREF_RE)
-        if len(team_links) >= 2 and len(game_links) == 1:
+        if len(team_ids) >= 2 and len(game_links) == 1:
             return node
         node = node.parent
     return None
@@ -141,7 +184,7 @@ def get_games_for_date(date: datetime) -> list[dict]:
         m = GAME_HREF_RE.search(link["href"])
         if not m:
             continue
-        kind, link_date, _slug, game_id = m.groups()
+        kind, link_date, game_slug, game_id = m.groups()
         game_id = int(game_id)
         if game_id in seen_ids:
             continue
@@ -149,13 +192,10 @@ def get_games_for_date(date: datetime) -> list[dict]:
         block = _find_game_block(link)
         if block is None:
             continue
-        team_links = block.find_all("a", href=TEAM_HREF_RE)
-        if len(team_links) < 2:
+        teams = _unique_teams(block.find_all("a", href=TEAM_HREF_RE))
+        if len(teams) < 2:
             continue
-        home_m = TEAM_HREF_RE.search(team_links[0]["href"])
-        away_m = TEAM_HREF_RE.search(team_links[1]["href"])
-        if not home_m or not away_m:
-            continue
+        home, away = _split_home_away(game_slug, teams[0], teams[1])
         seen_ids.add(game_id)
 
         full_url = (
@@ -166,10 +206,10 @@ def get_games_for_date(date: datetime) -> list[dict]:
         games.append({
             "game_id": game_id,
             "date": datetime.strptime(link_date, "%Y-%m-%d"),
-            "home_team_id": int(home_m.group(1)),
-            "home_team_name": home_m.group(2).replace("-", " "),
-            "away_team_id": int(away_m.group(1)),
-            "away_team_name": away_m.group(2).replace("-", " "),
+            "home_team_id": home[0],
+            "home_team_name": _display_name(*home),
+            "away_team_id": away[0],
+            "away_team_name": _display_name(*away),
             "status": "final" if kind == "boxscore" else "scheduled",
             "boxscore_url": full_url if kind == "boxscore" else None,
         })
@@ -226,25 +266,26 @@ def get_boxscore(boxscore_url: str) -> dict:
     esa parte vuelve vacia/None en vez de lanzar excepcion -- es
     scraper/ingest.py quien decide reintentar en la siguiente ejecucion.
     """
+    empty = {"home_score": None, "away_score": None, "team_stats": [], "player_stats": []}
+
     soup = _get(boxscore_url)
     tables = pd.read_html(io.StringIO(str(soup)))
 
-    team_links = soup.find_all("a", href=TEAM_HREF_RE)
-    team_order = []
-    for link in team_links:
-        m = TEAM_HREF_RE.search(link["href"])
-        if m:
-            info = (int(m.group(1)), m.group(2).replace("-", " "))
-            if info not in team_order:
-                team_order.append(info)
-    team_order = team_order[:2]  # local, visitante
+    # Equipos en el orden en que aparecen en la pagina (RealGM: visitante
+    # primero). Quien es local se decide por el slug de la URL.
+    team_order = _unique_teams(soup.find_all("a", href=TEAM_HREF_RE))[:2]
+    game_m = GAME_HREF_RE.search(boxscore_url)
+    if len(team_order) < 2 or not game_m:
+        return empty
+    home_t, _away_t = _split_home_away(game_m.group(3), team_order[0], team_order[1])
+    home_idx = 0 if team_order[0][0] == home_t[0] else 1
 
     home_score = away_score = None
     for t in tables:
         cols = [str(c).strip() for c in t.columns]
         if cols and cols[-1] == _FINAL_SCORE_COL and len(t) == 2:
-            home_score = _safe_int(t.iloc[0][_FINAL_SCORE_COL])
-            away_score = _safe_int(t.iloc[1][_FINAL_SCORE_COL])
+            home_score = _safe_int(t.iloc[home_idx][_FINAL_SCORE_COL])
+            away_score = _safe_int(t.iloc[1 - home_idx][_FINAL_SCORE_COL])
             break
 
     four_factors: dict[int, dict] = {}
@@ -279,7 +320,7 @@ def get_boxscore(boxscore_url: str) -> dict:
             ftm, fta = _parse_made_att(totals_row.get("FTM-A"))
             ts = {
                 "team_id": team_id,
-                "is_home": (i == 0),
+                "is_home": (team_id == home_t[0]),
                 "fg2_made": (fgm - fg3m) if fgm is not None and fg3m is not None else None,
                 "fg2_att": (fga - fg3a) if fga is not None and fg3a is not None else None,
                 "fg3_made": fg3m,

@@ -38,6 +38,17 @@ REALGM_BASE = "https://basketball.realgm.com"
 REALGM_LEAGUE_ID = 94  # German Pro A
 REALGM_LEAGUE_URL = f"{REALGM_BASE}/international/league/{REALGM_LEAGUE_ID}/German-Pro-A"
 
+# RealGM quita los acentos en los slugs de equipo (Tubingen, Koeln...).
+# Aqui se restauran por id de equipo (estable). Anade mas si ves nombres raros.
+TEAM_NAME_OVERRIDES = {
+    684: "Walter Tigers Tübingen",
+    1375: "Nürnberg Falcons BC",
+    1665: "Rhein Stars Köln",
+    377: "Eisbären Bremerhaven",
+    681: "BG Göttingen",
+    1179: "WWU Baskets Münster",
+}
+
 # Cabeceras "educadas" para el scraper: identifican el bot y evitan bloqueos
 # agresivos. Ajusta el user-agent si el sitio empieza a devolver 403.
 REQUEST_HEADERS = {

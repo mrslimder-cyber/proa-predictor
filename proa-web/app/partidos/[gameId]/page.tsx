@@ -128,8 +128,7 @@ export default async function GameSummaryPage({
 }
 
 function TeamSummaryCard({ summary }: { summary: MatchupTeamSummary }) {
-  const { team, season, isFallbackSeason, record, ptsForAvg, ptsAgainstAvg, efgAvg, recentForm } =
-    summary;
+  const { team, season, record, ptsForAvg, ptsAgainstAvg, efgAvg, recentForm } = summary;
 
   return (
     <div className="panel">
@@ -146,7 +145,7 @@ function TeamSummaryCard({ summary }: { summary: MatchupTeamSummary }) {
 
       {recentForm.length === 0 ? (
         <p style={{ color: "var(--chalk-dim)", fontSize: 13.5 }}>
-          Este equipo todavía no tiene partidos jugados con datos suficientes.
+          Todavía no ha jugado ningún partido esta temporada.
         </p>
       ) : (
         <>
@@ -185,12 +184,6 @@ function TeamSummaryCard({ summary }: { summary: MatchupTeamSummary }) {
               </span>
             ))}
           </div>
-
-          {isFallbackSeason && (
-            <p className="fallback-note">
-              Todavía sin partidos jugados esta temporada — datos de la temporada {season}.
-            </p>
-          )}
         </>
       )}
     </div>

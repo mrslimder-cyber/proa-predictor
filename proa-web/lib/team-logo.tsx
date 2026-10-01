@@ -2,14 +2,36 @@
 
 import { useState } from "react";
 
-/**
- * Proballers sirve el escudo de cada equipo en una URL predecible a partir
- * de su id (el mismo id que usamos como clave primaria en `teams`), sin
- * necesidad de scrapearlo ni guardarlo aparte:
- *   https://www.proballers.com/media/team/<id>.svg
- */
-export function teamLogoUrl(teamId: number): string {
-  return `https://www.proballers.com/media/team/${teamId}.svg`;
+const RGM = "https://basketball.realgm.com/images/basketball/5.0/team_logos/international/german";
+
+// id de equipo en RealGM -> archivo de logo. Los equipos sin logo en RealGM
+// (Koblenz, Orange Academy, Karlsruhe, Köln, Wolmirstedt, Bochum...) caen a iniciales.
+const LOGO_FILES: Record<number, string> = {
+  679: "artland.jpg",
+  686: "bbc.jpg",
+  681: "bg.jpg",
+  1380: "kircheim.png",
+  377: "bremerhaven.jpg",
+  1378: "wohnbau.png",
+  1085: "finke.png",
+  685: "46ers.jpg",
+  215: "crailsheim.png",
+  1376: "mlp.png",
+  1375: "nuernberger.png",
+  684: "tigers.jpg",
+};
+
+export function teamLogoUrl(teamId: number): string | null {
+  const file = LOGO_FILES[teamId];
+  return file ? `${RGM}/${file}` : null;
+}
+
+function initials(name: string): string {
+  const words = name.split(/\s+/).filter(Boolean);
+  if (words[0] && words[0] === words[0].toUpperCase() && words[0].length <= 4) {
+    return words[0].slice(0, 3);
+  }
+  return words.slice(0, 2).map((w) => w[0]).join("").toUpperCase();
 }
 
 export function TeamLogo({
@@ -22,8 +44,9 @@ export function TeamLogo({
   size?: number;
 }) {
   const [failed, setFailed] = useState(false);
+  const url = teamLogoUrl(teamId);
 
-  if (failed) {
+  if (!url || failed) {
     return (
       <span
         className="team-badge"
@@ -35,7 +58,7 @@ export function TeamLogo({
           flexShrink: 0,
         }}
       >
-        {name.slice(0, 2).toUpperCase()}
+        {initials(name)}
       </span>
     );
   }
@@ -43,12 +66,13 @@ export function TeamLogo({
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      src={teamLogoUrl(teamId)}
+      src={url}
       alt=""
       width={size}
       height={size}
       style={{ width: size, height: size, objectFit: "contain", flexShrink: 0 }}
       onError={() => setFailed(true)}
+      referrerPolicy="no-referrer"
       loading="lazy"
     />
   );

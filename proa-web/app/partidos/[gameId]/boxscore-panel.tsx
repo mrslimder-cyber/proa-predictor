@@ -4,18 +4,29 @@ import { useState } from "react";
 import type { TeamGameStats, GameInsightRow } from "@/lib/supabase";
 
 // Para estas stats, un valor MÁS BAJO es mejor (todas las demás: más alto = mejor).
-const LOWER_IS_BETTER = new Set<keyof TeamGameStats>(["tov", "pf"]);
+const LOWER_IS_BETTER = new Set<string>(["tov", "pf"]);
 
-type RowDef = { key: keyof TeamGameStats; label: string; pct?: boolean };
+type RowDef = {
+  key: string;
+  label: string;
+  pct?: boolean;
+  get?: (s: TeamGameStats) => number | null; // para stats calculadas
+};
+
+const ratio = (made: number | null, att: number | null) =>
+  made == null || att == null || att === 0 ? null : made / att;
 
 const ROWS: RowDef[] = [
   { key: "pts", label: "Puntos" },
   { key: "fg2_made", label: "Tiros de 2 anotados" },
   { key: "fg2_att", label: "Tiros de 2 intentados" },
+  { key: "fg2_pct", label: "% Tiros de 2", pct: true, get: (s) => ratio(s.fg2_made, s.fg2_att) },
   { key: "fg3_made", label: "Tiros de 3 anotados" },
   { key: "fg3_att", label: "Tiros de 3 intentados" },
+  { key: "fg3_pct", label: "% Tiros de 3", pct: true, get: (s) => ratio(s.fg3_made, s.fg3_att) },
   { key: "ft_made", label: "Tiros libres anotados" },
   { key: "ft_att", label: "Tiros libres intentados" },
+  { key: "ft_pct", label: "% Tiros libres", pct: true, get: (s) => ratio(s.ft_made, s.ft_att) },
   { key: "oreb", label: "Rebotes ofensivos" },
   { key: "dreb", label: "Rebotes defensivos" },
   { key: "reb", label: "Rebotes totales" },
@@ -33,7 +44,7 @@ const ROWS: RowDef[] = [
 function winningSide(
   homeVal: number | null,
   awayVal: number | null,
-  key: keyof TeamGameStats
+  key: string
 ): "home" | "away" | null {
   if (homeVal == null || awayVal == null || homeVal === awayVal) return null;
   const lowerBetter = LOWER_IS_BETTER.has(key);
@@ -93,11 +104,11 @@ export function BoxscorePanel({
           </thead>
           <tbody>
             {ROWS.map((r) => {
-              const h = (homeStats as any)[r.key] as number | null;
-              const a = (awayStats as any)[r.key] as number | null;
+              const h = r.get ? r.get(homeStats) : ((homeStats as any)[r.key] as number | null);
+              const a = r.get ? r.get(awayStats) : ((awayStats as any)[r.key] as number | null);
               const winner = winningSide(h, a, r.key);
               return (
-                <tr key={String(r.key)}>
+                <tr key={r.key}>
                   <td className={`num ${winner === "home" ? "stat-win" : ""}`}>{fmt(h, r.pct)}</td>
                   <td style={{ textAlign: "center", color: "var(--chalk-dim)", fontSize: 13 }}>
                     {r.label}
