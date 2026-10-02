@@ -12,19 +12,13 @@ type Row = Game & {
 
 type Matchday = { label: string; dateRange: string; games: Row[] };
 
-const TWO_DAYS_MS = 2 * 24 * 60 * 60 * 1000;
-
 async function getUpcomingByMatchday(): Promise<Matchday[]> {
   const seasons = await getSeasons();
   const season = seasons[0];
   if (!season) return [];
 
-  // Traemos TODO el calendario de la temporada (jugados y pendientes), no
-  // solo los "scheduled" con fecha futura. Antes, en cuanto pasaba la hora
-  // de un partido de hoy (jugado o no), desaparecía de la portada aunque la
-  // jornada siguiente ni se acercara todavía. Con el calendario completo
-  // podemos reconstruir las jornadas reales y decidir cuál enseñar según la
-  // fecha de la SIGUIENTE jornada, no según cada partido suelto.
+  // Traemos TODO el calendario de la temporada (jugados y pendientes) para
+  // reconstruir las jornadas reales y decidir cuál enseñar según su estado.
   const { data: allGames } = await supabase
     .from("games")
     .select("*")
@@ -43,26 +37,21 @@ async function getUpcomingByMatchday(): Promise<Matchday[]> {
 
   // Bloques cronológicos de tamaño "nº de equipos / 2" -- la misma
   // aproximación de jornada que ya se usa en /temporadas/[season]/jornada/[n]
-  // y en /evolucion (Proballers no publica un número de jornada explícito).
+  // y en /evolucion.
   const jornadas: Game[][] = [];
   for (let i = 0; i < allGames.length; i += gamesPerMatchday) {
     jornadas.push(allGames.slice(i, i + gamesPerMatchday));
   }
 
-  // Elegimos la jornada "actual" a mostrar: la más antigua cuya jornada
-  // siguiente todavía no empieza dentro de 2 días. Así, la jornada de un
-  // fin de semana se queda en portada -- con predicción y resultado si ya
-  // ha terminado -- hasta 2 días antes del primer partido de la siguiente.
-  let displayIndex = jornadas.length - 1;
-  const now = new Date();
-  for (let i = 0; i < jornadas.length - 1; i++) {
-    const nextFirstDate = new Date(jornadas[i + 1][0].date);
-    const cutoff = new Date(nextFirstDate.getTime() - TWO_DAYS_MS);
-    if (now < cutoff) {
-      displayIndex = i;
-      break;
-    }
-  }
+  // Jornada "actual": la primera (en orden cronológico) que todavía tenga
+  // algún partido sin finalizar. Se queda en portada hasta que TODOS sus
+  // partidos estén en estado "final", sin depender de fechas (así cubre
+  // jornadas repartidas en viernes + domingo, aplazados, etc.).
+  // Si todas están finalizadas (fin de temporada), mostramos la última.
+  let displayIndex = jornadas.findIndex((block) =>
+    block.some((g) => g.status !== "final")
+  );
+  if (displayIndex === -1) displayIndex = jornadas.length - 1;
 
   const blocksToShow = jornadas.slice(displayIndex, displayIndex + 2);
   if (blocksToShow.length === 0) return [];
