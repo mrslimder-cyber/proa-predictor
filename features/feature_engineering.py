@@ -186,6 +186,8 @@ def build_dataset() -> pd.DataFrame:
             state.last_game_date = g.date
 
     df = pd.DataFrame(rows)
+    if df.empty:
+        return df
 
     # Solo nos quedamos con partidos donde ambos equipos ya tienen histórico
     # mínimo; los primeros partidos de cada equipo en la temporada tienen

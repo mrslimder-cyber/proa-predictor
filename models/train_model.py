@@ -37,6 +37,9 @@ def temporal_split(df: pd.DataFrame, test_fraction: float):
 
 def train():
     df = build_dataset()
+    if df.empty:
+        print("[AVISO] No hay partidos finalizados todavía; se omite el entrenamiento.")
+        return None, None, None
     print(f"Dataset construido: {len(df)} partidos utilizables.")
 
     if len(df) < 50:

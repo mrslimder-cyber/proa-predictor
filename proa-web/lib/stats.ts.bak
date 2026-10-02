@@ -803,7 +803,8 @@ export type FormEntry = {
 
 export type MatchupTeamSummary = {
   team: Team;
-  season: string;
+  season: string; // temporada de la que salen estas stats (puede ser una anterior, ver fallback abajo)
+  isFallbackSeason: boolean; // true si la temporada actual no tenía partidos jugados todavía
   record: { wins: number; losses: number };
   ptsForAvg: number | null;
   ptsAgainstAvg: number | null;
@@ -837,13 +838,31 @@ async function getFinishedTeamGames(
 }
 
 async function buildTeamSummary(
-  season: string,
+  currentSeason: string,
   team: Team,
-  beforeDate: string
+  beforeDate: string,
+  allSeasonsDesc: string[]
 ): Promise<MatchupTeamSummary> {
-  // Solo partidos de ESTA temporada anteriores al partido: sin fallback a
-  // la temporada pasada (un equipo sin partidos se muestra con 0 jugados).
-  const games = await getFinishedTeamGames(season, team.id, beforeDate);
+  let season = currentSeason;
+  let games = await getFinishedTeamGames(season, team.id, beforeDate);
+  let isFallbackSeason = false;
+
+  // En pretemporada (o al inicio de la temporada), un equipo puede no tener
+  // TODAVÍA ningún partido jugado en `currentSeason`. En vez de enseñar un
+  // resumen vacío, caemos a la temporada anterior más reciente en la que
+  // ese equipo sí jugó, para que la página siempre tenga algo útil que mostrar.
+  if (games.length === 0) {
+    const idx = allSeasonsDesc.indexOf(currentSeason);
+    for (let i = idx + 1; i < allSeasonsDesc.length; i++) {
+      const fallbackGames = await getFinishedTeamGames(allSeasonsDesc[i], team.id);
+      if (fallbackGames.length > 0) {
+        games = fallbackGames;
+        season = allSeasonsDesc[i];
+        isFallbackSeason = true;
+        break;
+      }
+    }
+  }
 
   const gameIds = games.map((g) => g.id);
   const opponentIds = Array.from(
@@ -893,6 +912,7 @@ async function buildTeamSummary(
   return {
     team,
     season,
+    isFallbackSeason,
     record: { wins, losses },
     ptsForAvg: played > 0 ? ptsFor / played : null,
     ptsAgainstAvg: played > 0 ? ptsAgainst / played : null,
@@ -905,7 +925,7 @@ export async function getMatchupPreview(gameId: number): Promise<MatchupPreview 
   const { data: game } = await supabase.from("games").select("*").eq("id", gameId).maybeSingle();
   if (!game) return null;
 
-  const [teamById, { data: predictions }] = await Promise.all([
+  const [teamById, { data: predictions }, allSeasonsDesc] = await Promise.all([
     getTeamsById([game.home_team_id, game.away_team_id]),
     supabase
       .from("predictions")
@@ -913,6 +933,7 @@ export async function getMatchupPreview(gameId: number): Promise<MatchupPreview 
       .eq("game_id", gameId)
       .order("created_at", { ascending: false })
       .limit(1),
+    getSeasons(),
   ]);
 
   const homeTeam = teamById.get(game.home_team_id);
@@ -924,8 +945,8 @@ export async function getMatchupPreview(gameId: number): Promise<MatchupPreview 
   const cutoffDate = game.date;
 
   const [home, away] = await Promise.all([
-    buildTeamSummary(game.season, homeTeam, cutoffDate),
-    buildTeamSummary(game.season, awayTeam, cutoffDate),
+    buildTeamSummary(game.season, homeTeam, cutoffDate, allSeasonsDesc),
+    buildTeamSummary(game.season, awayTeam, cutoffDate, allSeasonsDesc),
   ]);
 
   return {

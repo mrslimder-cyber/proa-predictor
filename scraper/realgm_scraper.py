@@ -33,6 +33,16 @@ visitando a Crailsheim). Antes se asumia que el primer link de equipo era
 el LOCAL, lo que invertia local/visitante en TODOS los partidos. Ahora el
 orden se decide leyendo el slug del partido (_split_home_away).
 
+CAMBIOS DE ESTA VERSION (sobre la anterior):
+  - get_boxscore() rellena `player_id` en cada jugador: id numerico de
+    RealGM sacado del enlace /player/<Nombre>/Summary/<id> (pandas.read_html
+    descarta los enlaces, por eso se lee aparte con BeautifulSoup). Si no
+    se encuentra el enlace se usa un id negativo estable derivado del
+    nombre (_fallback_player_id), para no violar el NOT NULL de
+    player_game_stats.player_id.
+  - _get() reintenta hasta 3 veces ante timeouts / errores de red, y usa
+    curl_cffi (impersonate="chrome") en lugar de requests.
+
 IMPORTANTE -- sin verificar en produccion contra cientos de partidos
 reales, revisalo en tu primera ejecucion (mismo espiritu que los avisos
 que ya tenia proballers_scraper.py con sus propios patrones de URL):
@@ -57,6 +67,9 @@ que ya tenia proballers_scraper.py con sus propios patrones de URL):
      None en vez de lanzar una excepcion clara -- por eso cada campo se
      parsea de forma defensiva (_safe_int/_safe_float/etc devuelven
      None en vez de reventar).
+  5. player_id: se casa por nombre visible entre el texto del enlace y la
+     columna "Player" de la tabla. Si ves ids negativos en player_game_stats,
+     el nombre de la tabla no coincide con el del enlace (p.ej. abreviado).
 
 Uso:
     from scraper.realgm_scraper import get_season_games, get_boxscore
@@ -67,12 +80,13 @@ Uso:
 import io
 import re
 import time
+import zlib
 from datetime import datetime, timedelta
 from urllib.parse import unquote
 
 import pandas as pd
-import requests
 from bs4 import BeautifulSoup
+from curl_cffi import requests
 
 from config import (
     REALGM_LEAGUE_ID, REALGM_LEAGUE_URL, REQUEST_HEADERS,
@@ -89,6 +103,8 @@ TEAM_HREF_RE = re.compile(
 GAME_HREF_RE = re.compile(
     r"/international/(preview|boxscore)/(\d{4}-\d{2}-\d{2})/([^/\"]+)/(\d+)"
 )
+# Enlace a la ficha de jugador: /player/<Nombre>/Summary/<id>
+PLAYER_HREF_RE = re.compile(r"/player/[^/\"]+/Summary/(\d+)")
 
 # Ver aviso 1 de la cabecera del modulo.
 SEASON_START_MONTH_DAY = (9, 1)
@@ -99,11 +115,21 @@ _PLAYER_COLS = {"Min", "FGM-A", "3PM-A", "FTM-A", "PTS"}
 _FINAL_SCORE_COL = "Final"
 
 
-def _get(url: str) -> BeautifulSoup:
-    resp = requests.get(url, headers=REQUEST_HEADERS, timeout=REQUEST_TIMEOUT)
-    resp.raise_for_status()
-    time.sleep(REQUEST_DELAY_SECONDS)
-    return BeautifulSoup(resp.text, "lxml")
+def _get(url: str, retries: int = 3) -> BeautifulSoup:
+    """GET con reintentos (timeouts / errores de red). curl_cffi imita un
+    navegador real, que es lo que RealGM exige para no devolver 403."""
+    for attempt in range(retries):
+        try:
+            resp = requests.get(
+                url, headers=REQUEST_HEADERS, impersonate="chrome", timeout=REQUEST_TIMEOUT
+            )
+            resp.raise_for_status()
+            time.sleep(REQUEST_DELAY_SECONDS)
+            return BeautifulSoup(resp.text, "lxml")
+        except Exception:
+            if attempt == retries - 1:
+                raise
+            time.sleep(2 * (attempt + 1))
 
 
 def _unique_teams(links) -> list[tuple[int, str]]:
@@ -135,6 +161,23 @@ def _split_home_away(game_slug: str, a: tuple[int, str], b: tuple[int, str]):
     return b, a  # RealGM lista siempre "visitante @ local"
 
 
+def _player_ids_by_name(soup) -> dict[str, int]:
+    """nombre visible del jugador -> id numerico de RealGM (leido de los
+    enlaces /player/<Nombre>/Summary/<id> del boxscore)."""
+    out = {}
+    for a in soup.find_all("a", href=PLAYER_HREF_RE):
+        name = a.get_text(strip=True)
+        if name:
+            out[name] = int(PLAYER_HREF_RE.search(a["href"]).group(1))
+    return out
+
+
+def _fallback_player_id(name: str) -> int:
+    """Id negativo estable (cabe en INTEGER de Postgres) para cuando no se
+    encuentra el enlace del jugador; evita violar el NOT NULL de player_id."""
+    return -(zlib.crc32(name.encode("utf-8")) % 2_000_000_000) - 1
+
+
 def _season_date_range(season: str) -> tuple[datetime, datetime]:
     start_year = int(season.split("-")[0])
     end_year = start_year + 1
@@ -142,56 +185,24 @@ def _season_date_range(season: str) -> tuple[datetime, datetime]:
     end = datetime(end_year, *SEASON_END_MONTH_DAY)
     return start, end
 
-
-def _find_game_block(link):
-    """Sube por los ancestros del link de partido hasta el contenedor
-    MINIMO que ya incluye los 2 equipos de ESE partido (mismo enfoque que
-    usaba proballers_scraper._find_game_block: parar en cuanto haya
-    exactamente 1 link de partido y 2+ equipos distintos evita subir
-    hasta un contenedor que mezcle varios partidos del mismo dia)."""
-    node = link.parent
-    while node is not None:
-        team_ids = {
-            int(TEAM_HREF_RE.search(t["href"]).group(1))
-            for t in node.find_all("a", href=TEAM_HREF_RE)
-        }
-        game_links = node.find_all("a", href=GAME_HREF_RE)
-        if len(team_ids) >= 2 and len(game_links) == 1:
-            return node
-        node = node.parent
-    return None
-
-
 def get_games_for_date(date: datetime) -> list[dict]:
-    """
-    Partidos de UN dia concreto. Devuelve, por partido:
-        {game_id, date, home_team_id, home_team_name, away_team_id,
-         away_team_name, status, boxscore_url}
-    status es "final" si RealGM ya publico el boxscore detallado de ese
-    partido, "scheduled" en caso contrario -- esto incluye partidos que
-    ya se jugaron pero cuyo boxscore RealGM aun no proceso (se ve en la
-    propia web como resultado con marcador pero sin link "Box Score"
-    todavia); ese caso se reintentara solo con volver a correr el
-    pipeline mas adelante.
-    """
     date_str = date.strftime("%Y-%m-%d")
     url = f"{REALGM_LEAGUE_URL}/scores/{date_str}/{REALGM_LEAGUE_ID}"
     soup = _get(url)
 
     games = []
     seen_ids = set()
-    for link in soup.find_all("a", href=GAME_HREF_RE):
-        m = GAME_HREF_RE.search(link["href"])
-        if not m:
+    # Un <table class="game ..."> por partido (los internos son "game_stats",
+    # no coinciden con el selector). Sin subir por ancestros: rapido y robusto.
+    for block in soup.select("table.game"):
+        link = block.find("a", href=GAME_HREF_RE)
+        if link is None:
             continue
-        kind, link_date, game_slug, game_id = m.groups()
+        kind, link_date, game_slug, game_id = GAME_HREF_RE.search(link["href"]).groups()
         game_id = int(game_id)
         if game_id in seen_ids:
             continue
 
-        block = _find_game_block(link)
-        if block is None:
-            continue
         teams = _unique_teams(block.find_all("a", href=TEAM_HREF_RE))
         if len(teams) < 2:
             continue
@@ -260,7 +271,7 @@ def get_boxscore(boxscore_url: str) -> dict:
         {
           "home_score": int|None, "away_score": int|None,
           "team_stats": [ {team_id, is_home, pts, ..., efg_pct, tov_pct, orb_pct, ft_rate}, x2 ],
-          "player_stats": [ {team_id, player_name, pts, ..., minutes, valuation}, ... ],
+          "player_stats": [ {team_id, player_id, player_name, pts, ..., minutes, valuation}, ... ],
         }
     Si alguna parte no se encuentra (cambio de maquetacion de RealGM),
     esa parte vuelve vacia/None en vez de lanzar excepcion -- es
@@ -270,6 +281,11 @@ def get_boxscore(boxscore_url: str) -> dict:
 
     soup = _get(boxscore_url)
     tables = pd.read_html(io.StringIO(str(soup)))
+    # nombre visible -> id de jugador, a partir de los links /player/<slug>/Summary/<id>
+    player_ids: dict[str, int] = {}
+    for a in soup.find_all("a", href=re.compile(r"/player/[^/]+/Summary/(\d+)")):
+        pid = int(re.search(r"/Summary/(\d+)", a["href"]).group(1))
+        player_ids.setdefault(a.get_text(strip=True), pid)
 
     # Equipos en el orden en que aparecen en la pagina (RealGM: visitante
     # primero). Quien es local se decide por el slug de la URL.
@@ -356,8 +372,9 @@ def get_boxscore(boxscore_url: str) -> dict:
             fg3m, fg3a = _parse_made_att(prow.get("3PM-A"))
             ftm, fta = _parse_made_att(prow.get("FTM-A"))
             player_stats.append({
-                "team_id": team_id,
+                "player_id": player_ids.get(name) or (zlib.crc32(f"{team_id}:{name}".encode()) & 0x7FFFFFFF),
                 "player_name": name,
+                "team_id": team_id,
                 "minutes": _safe_minutes(prow.get("Min")),
                 "fg2_made": (fgm - fg3m) if fgm is not None and fg3m is not None else None,
                 "fg2_att": (fga - fg3a) if fga is not None and fg3a is not None else None,

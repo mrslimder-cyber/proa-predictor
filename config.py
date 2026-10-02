@@ -53,10 +53,13 @@ TEAM_NAME_OVERRIDES = {
 # agresivos. Ajusta el user-agent si el sitio empieza a devolver 403.
 REQUEST_HEADERS = {
     "User-Agent": (
-        "Mozilla/5.0 (compatible; ProAPredictor/1.0; "
-        "+https://github.com/tu-usuario/proa-predictor)"
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
     ),
-    "Accept-Language": "es-ES,es;q=0.9",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Referer": "https://basketball.realgm.com/",
+    "Upgrade-Insecure-Requests": "1",
 }
 REQUEST_DELAY_SECONDS = 0.7  # cortesia entre requests para no saturar el sitio
 REQUEST_TIMEOUT = 20
@@ -71,9 +74,6 @@ CURRENT_SEASON = "2026-2027"
 # RealGM cubre esto mismo hacia atras hasta 2012-2013 si quieres ampliar
 # el rango.
 HISTORICAL_SEASONS = [
-    "2022-2023",
-    "2023-2024",
-    "2024-2025",
     "2025-2026",
 ]
 
@@ -96,7 +96,7 @@ MIN_GAMES_FOR_FEATURES = 3       # partidos minimos jugados antes de confiar en 
 # deshabilitado hasta tener una fuente RealGM verificada para el
 # calendario de temporadas pasadas de un equipo nuevo -- ver cabecera de
 # ese modulo). Se deja aqui por si se retoma.
-BRIDGE_GAMES_PER_TEAM = 6
+BRIDGE_GAMES_PER_TEAM = 4
 
 # --- Modelo ---
 MODEL_VERSION = "v1"
