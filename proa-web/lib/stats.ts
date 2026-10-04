@@ -1164,3 +1164,76 @@ export async function getSeasonFourFactors(season: string): Promise<TeamFourFact
   }
   return rows;
 }
+
+// ---------- Extras para el preview de un partido próximo ----------
+
+export type TeamScorer = {
+  playerId: number;
+  playerName: string;
+  games: number;
+  ptsAvg: number;
+};
+
+export type MatchupExtras = {
+  advanced: TeamAdvancedRow[];
+  fourFactors: TeamFourFactorsRow[];
+  scorers: { home: TeamScorer[]; away: TeamScorer[] };
+};
+
+async function getTopScorers(
+  season: string,
+  teamIds: number[]
+): Promise<Map<number, TeamScorer[]>> {
+  const out = new Map<number, TeamScorer[]>();
+  const games = await getSeasonGames(season);
+  const gameIds = games.map((g) => g.id);
+  if (gameIds.length === 0) return out;
+
+  const { data } = await supabase
+    .from("player_game_stats")
+    .select("player_id,player_name,team_id,pts")
+    .in("team_id", teamIds)
+    .in("game_id", gameIds)
+    .range(0, 4999);
+
+  const acc = new Map<string, { teamId: number; scorer: TeamScorer; pts: number }>();
+  for (const r of data ?? []) {
+    const key = `${r.team_id}:${r.player_id}`;
+    const e = acc.get(key) ?? {
+      teamId: r.team_id,
+      pts: 0,
+      scorer: { playerId: r.player_id, playerName: r.player_name, games: 0, ptsAvg: 0 },
+    };
+    e.scorer.games += 1;
+    e.pts += r.pts ?? 0;
+    acc.set(key, e);
+  }
+
+  for (const teamId of teamIds) {
+    const all = Array.from(acc.values())
+      .filter((e) => e.teamId === teamId)
+      .map((e) => ({ ...e.scorer, ptsAvg: e.pts / e.scorer.games }));
+    // Al inicio de temporada puede que nadie llegue al mínimo: en ese caso usamos a todos.
+    const eligible = all.filter((p) => p.games >= MIN_GAMES_PLAYER);
+    const pool = eligible.length > 0 ? eligible : all;
+    out.set(teamId, pool.sort((a, b) => b.ptsAvg - a.ptsAvg).slice(0, 3));
+  }
+  return out;
+}
+
+export async function getMatchupExtras(
+  season: string,
+  homeId: number,
+  awayId: number
+): Promise<MatchupExtras> {
+  const [advanced, fourFactors, scorers] = await Promise.all([
+    getSeasonAdvancedStats(season),
+    getSeasonFourFactors(season),
+    getTopScorers(season, [homeId, awayId]),
+  ]);
+  return {
+    advanced,
+    fourFactors,
+    scorers: { home: scorers.get(homeId) ?? [], away: scorers.get(awayId) ?? [] },
+  };
+}

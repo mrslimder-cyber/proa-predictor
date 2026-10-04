@@ -595,3 +595,27 @@ a.panel.game-link:hover {
   .topbar { margin: -22px -16px 24px; padding: 14px 16px; }
   .shell { padding: 18px 16px 80px; }
 }
+
+/* ---------- Portada: predicciones + clasificación fija ---------- */
+
+.home-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start; /* imprescindible para que sticky funcione */
+}
+.home-standings {
+  position: sticky;
+  top: 84px; /* deja libre la barra superior */
+  max-height: calc(100vh - 104px);
+  overflow-y: auto;
+}
+.home-standings .panel { margin-bottom: 0; }
+.home-standings .table-scroll table { min-width: 0; }
+.home-standings th,
+.home-standings td { padding: 7px 6px; font-size: 13px; }
+
+@media (max-width: 860px) {
+  .home-split { grid-template-columns: 1fr; }
+  .home-standings { position: static; max-height: none; overflow: visible; }
+}

@@ -83,6 +83,7 @@ import time
 import zlib
 from datetime import datetime, timedelta
 from urllib.parse import unquote
+from tqdm import tqdm
 
 import pandas as pd
 from bs4 import BeautifulSoup
@@ -227,25 +228,34 @@ def get_games_for_date(date: datetime) -> list[dict]:
     return games
 
 
-def get_season_games(season: str) -> list[dict]:
+def get_season_games(
+    season: str,
+    start: datetime | None = None,
+    end: datetime | None = None,
+    show_progress: bool = True,
+) -> list[dict]:
     """
-    Recorre dia a dia el rango aproximado de la temporada (ver
-    _season_date_range / aviso 1 de cabecera) y agrega todos los
-    partidos encontrados. Es la forma mas robusta de listar la
-    temporada completa sin depender de un endpoint de calendario no
-    verificado. Caro la primera vez (un request por dia); barato
-    despues porque scraper/ingest.py es idempotente (only_new=True).
+    Recorre dia a dia [start, end] (acotado al rango de la temporada; por
+    defecto, la temporada entera) y agrega los partidos encontrados.
+    Muestra una barra de progreso con la fecha actual y los partidos hallados.
     """
-    start, end = _season_date_range(season)
+    season_start, season_end = _season_date_range(season)
+    start = max(start or season_start, season_start)
+    end = min(end or season_end, season_end)
+    n_days = (end - start).days + 1
+    if n_days <= 0:
+        return []
+
     all_games: dict[int, dict] = {}
-    day = start
-    while day <= end:
+    bar = tqdm(range(n_days), desc=f"Calendario {season}", unit="día", disable=not show_progress)
+    for i in bar:
+        day = start + timedelta(days=i)
         try:
             for g in get_games_for_date(day):
                 all_games[g["game_id"]] = g  # la vista mas reciente gana (p.ej. pasa a "final")
         except Exception as e:
-            print(f"  [WARN] fallo consultando RealGM del {day.date()}: {e}")
-        day += timedelta(days=1)
+            tqdm.write(f"  [WARN] fallo consultando RealGM del {day.date()}: {e}")
+        bar.set_postfix(fecha=day.strftime("%Y-%m-%d"), partidos=len(all_games))
     return sorted(all_games.values(), key=lambda g: g["date"])
 
 
