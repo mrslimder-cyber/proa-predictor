@@ -1,6 +1,6 @@
 import { supabase, Game, Team, Prediction } from "@/lib/supabase";
-import { TeamLogo } from "@/lib/team-logo";
-import { getSeasons } from "@/lib/stats";
+import { TeamInline, TeamLogo } from "@/lib/team-logo";
+import { getSeasons, getStandings, StandingRow } from "@/lib/stats";
 
 export const revalidate = 300; // refresca cada 5 min
 
@@ -12,11 +12,7 @@ type Row = Game & {
 
 type Matchday = { label: string; dateRange: string; games: Row[] };
 
-async function getUpcomingByMatchday(): Promise<Matchday[]> {
-  const seasons = await getSeasons();
-  const season = seasons[0];
-  if (!season) return [];
-
+async function getUpcomingByMatchday(season: string): Promise<Matchday[]> {
   // Traemos TODO el calendario de la temporada (jugados y pendientes) para
   // reconstruir las jornadas reales y decidir cuál enseñar según su estado.
   const { data: allGames } = await supabase
@@ -90,8 +86,68 @@ async function getUpcomingByMatchday(): Promise<Matchday[]> {
   });
 }
 
+function StandingsPanel({ rows, season }: { rows: StandingRow[]; season: string }) {
+  return (
+    <div className="panel">
+      <div className="section-title">
+        <span className="dot" /> Clasificación
+      </div>
+      {rows.length === 0 ? (
+        <p style={{ color: "var(--chalk-dim)", fontSize: 13.5 }}>Sin datos todavía.</p>
+      ) : (
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Equipo</th>
+                <th className="num">PJ</th>
+                <th className="num">V</th>
+                <th className="num">D</th>
+                <th className="num">+/-</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={r.team.id}>
+                  <td className="num">
+                    <span
+                      className={`rank-badge ${
+                        i === 0 ? "top1" : i === 1 ? "top2" : i === 2 ? "top3" : ""
+                      }`}
+                    >
+                      {i + 1}
+                    </span>
+                  </td>
+                  <td style={{ maxWidth: 170 }}>
+                    <TeamInline
+                      teamId={r.team.id}
+                      name={r.team.name}
+                      size={18}
+                      href={`/temporadas/${encodeURIComponent(season)}/equipos/${r.team.id}`}
+                    />
+                  </td>
+                  <td className="num">{r.played}</td>
+                  <td className="num">{r.wins}</td>
+                  <td className="num">{r.losses}</td>
+                  <td className="num">{r.diff > 0 ? `+${r.diff}` : r.diff}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default async function HomePage() {
-  const matchdays = await getUpcomingByMatchday();
+  const seasons = await getSeasons();
+  const season = seasons[0];
+
+  const [matchdays, standings] = season
+    ? await Promise.all([getUpcomingByMatchday(season), getStandings(season)])
+    : [[] as Matchday[], [] as StandingRow[]];
 
   if (matchdays.length === 0) {
     return (
@@ -119,85 +175,104 @@ export default async function HomePage() {
         </p>
       </div>
 
-      {matchdays.map((md, idx) => (
-        <div key={idx} className="matchday-block">
-          <div className="matchday-header">
-            <span className="matchday-title">{md.label}</span>
-            <span className="matchday-dates">{md.dateRange}</span>
-          </div>
-          {md.games.map((row) => {
-            const isFinal =
-              row.status === "final" && row.home_score != null && row.away_score != null;
-            return (
-              <a className="panel game-link" key={row.id} href={`/partidos/${row.id}`}>
-                <div className="meta-row">
-                  <span>
-                    {new Date(row.date).toLocaleDateString("es-ES", {
-                      weekday: "short",
-                      day: "2-digit",
-                      month: "short",
-                    })}
-                    {isFinal ? " · Finalizado" : ""}
-                  </span>
-                </div>
-
-                <div className="matchup">
-                  <div className="matchup-team">
-                    {row.home && <TeamLogo teamId={row.home.id} name={row.home.name} size={26} />}
-                    <div className="team-name">{row.home?.name ?? "Equipo local"}</div>
-                  </div>
-                  <div className="vs">
-                    {isFinal ? (
-                      <span className="scorefont" style={{ fontSize: 16, color: "var(--chalk)" }}>
-                        {row.home_score} – {row.away_score}
+      <div className="home-split">
+        <div className="home-matches">
+          {matchdays.map((md, idx) => (
+            <div key={idx} className="matchday-block">
+              <div className="matchday-header">
+                <span className="matchday-title">{md.label}</span>
+                <span className="matchday-dates">{md.dateRange}</span>
+              </div>
+              {md.games.map((row) => {
+                const isFinal =
+                  row.status === "final" && row.home_score != null && row.away_score != null;
+                return (
+                  <a className="panel game-link" key={row.id} href={`/partidos/${row.id}`}>
+                    <div className="meta-row">
+                      <span>
+                        {new Date(row.date).toLocaleDateString("es-ES", {
+                          weekday: "short",
+                          day: "2-digit",
+                          month: "short",
+                        })}
+                        {isFinal ? " · Finalizado" : ""}
                       </span>
+                    </div>
+
+                    <div className="matchup">
+                      <div className="matchup-team">
+                        {row.home && (
+                          <TeamLogo teamId={row.home.id} name={row.home.name} size={26} />
+                        )}
+                        <div className="team-name">{row.home?.name ?? "Equipo local"}</div>
+                      </div>
+                      <div className="vs">
+                        {isFinal ? (
+                          <span
+                            className="scorefont"
+                            style={{ fontSize: 16, color: "var(--chalk)" }}
+                          >
+                            {row.home_score} – {row.away_score}
+                          </span>
+                        ) : (
+                          "vs"
+                        )}
+                      </div>
+                      <div className="matchup-team away">
+                        {row.away && (
+                          <TeamLogo teamId={row.away.id} name={row.away.name} size={26} />
+                        )}
+                        <div className="team-name away">{row.away?.name ?? "Equipo visitante"}</div>
+                      </div>
+                    </div>
+
+                    {row.prediction ? (
+                      <>
+                        <div className="prob-bar">
+                          <div
+                            className="prob-fill-home"
+                            style={{ width: `${row.prediction.home_win_prob * 100}%` }}
+                          />
+                          <div
+                            className="prob-fill-away"
+                            style={{ width: `${(1 - row.prediction.home_win_prob) * 100}%` }}
+                          />
+                        </div>
+                        <div className="prob-labels">
+                          <span>
+                            <strong>{Math.round(row.prediction.home_win_prob * 100)}%</strong> local
+                          </span>
+                          {row.prediction.predicted_margin != null && (
+                            <span>
+                              margen estimado{" "}
+                              <strong>{row.prediction.predicted_margin.toFixed(1)}</strong>
+                            </span>
+                          )}
+                          <span>
+                            <strong>{Math.round((1 - row.prediction.home_win_prob) * 100)}%</strong>{" "}
+                            visitante
+                          </span>
+                        </div>
+                      </>
                     ) : (
-                      "vs"
+                      <div
+                        className="prob-labels"
+                        style={{ justifyContent: "center", marginTop: 12 }}
+                      >
+                        Sin predicción todavía
+                      </div>
                     )}
-                  </div>
-                  <div className="matchup-team away">
-                    {row.away && <TeamLogo teamId={row.away.id} name={row.away.name} size={26} />}
-                    <div className="team-name away">{row.away?.name ?? "Equipo visitante"}</div>
-                  </div>
-                </div>
-
-                {row.prediction ? (
-                  <>
-                    <div className="prob-bar">
-                      <div
-                        className="prob-fill-home"
-                        style={{ width: `${row.prediction.home_win_prob * 100}%` }}
-                      />
-                      <div
-                        className="prob-fill-away"
-                        style={{ width: `${(1 - row.prediction.home_win_prob) * 100}%` }}
-                      />
-                    </div>
-                    <div className="prob-labels">
-                      <span>
-                        <strong>{Math.round(row.prediction.home_win_prob * 100)}%</strong> local
-                      </span>
-                      {row.prediction.predicted_margin != null && (
-                        <span>
-                          margen estimado{" "}
-                          <strong>{row.prediction.predicted_margin.toFixed(1)}</strong>
-                        </span>
-                      )}
-                      <span>
-                        <strong>{Math.round((1 - row.prediction.home_win_prob) * 100)}%</strong> visitante
-                      </span>
-                    </div>
-                  </>
-                ) : (
-                  <div className="prob-labels" style={{ justifyContent: "center", marginTop: 12 }}>
-                    Sin predicción todavía
-                  </div>
-                )}
-              </a>
-            );
-          })}
+                  </a>
+                );
+              })}
+            </div>
+          ))}
         </div>
-      ))}
+
+        <aside className="home-standings">
+          <StandingsPanel rows={standings} season={season} />
+        </aside>
+      </div>
     </div>
   );
 }
