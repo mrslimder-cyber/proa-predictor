@@ -21,7 +21,21 @@ const LOGO_FILES: Record<number, string> = {
   684: "tigers.jpg",
 };
 
+// id de equipo -> archivo en proa-web/public/logos/ (logos propios, tienen
+// prioridad sobre los de RealGM). Añade una línea por cada equipo nuevo:
+//   1665: "koeln.png",
+const LOCAL_LOGOS: Record<number, string> = {
+  1665: "koeln.png",
+  2309: "klobenz.png",
+  2258: "wolmirstedt.png",
+  1567: "sparkassenstars.png",
+  1578: "ratiopharm.png",
+  1763: "lions.png",
+};
+
 export function teamLogoUrl(teamId: number): string | null {
+  const local = LOCAL_LOGOS[teamId];
+  if (local) return `/logos/${local}`;
   const file = LOGO_FILES[teamId];
   return file ? `${RGM}/${file}` : null;
 }

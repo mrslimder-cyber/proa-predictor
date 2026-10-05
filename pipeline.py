@@ -2,11 +2,13 @@
 Pipeline completo, pensado para ejecutarse tras cada jornada:
 
 1. Ingesta: descarga resultados nuevos y los guarda en la BD.
-2. Entrenamiento: reentrena los modelos con todo el histórico actualizado.
-3. Predicción: genera predicciones para los próximos partidos pendientes.
-4. Claves de partidos: genera el resumen "por qué ganó" de los partidos
+2. Ratings Elo: recalcula y guarda el Elo de cada equipo en team_ratings
+   (es lo que lee la pagina "Ranking Elo" de la web).
+3. Entrenamiento: reentrena los modelos con todo el histórico actualizado.
+4. Predicción: genera predicciones para los próximos partidos pendientes.
+5. Claves de partidos: genera el resumen "por qué ganó" de los partidos
    ya finalizados que todavía no lo tengan (ver models/game_insights.py).
-5. Gráficos: regenera las visualizaciones de análisis.
+6. Gráficos: regenera las visualizaciones de análisis.
 
 Uso manual:
     python pipeline.py
@@ -25,6 +27,7 @@ def run_pipeline():
 
     steps = [
         ("Ingesta de datos", _step_ingest),
+        ("Ratings Elo (team_ratings)", _step_ratings),
         ("Entrenamiento del modelo", _step_train),
         ("Predicción de próximos partidos", _step_predict),
         ("Claves de partidos jugados", _step_insights),
@@ -49,6 +52,11 @@ def run_pipeline():
 def _step_ingest():
     from scraper.ingest import run_all_seasons
     run_all_seasons()  # histórico completo + temporada actual, en orden
+
+
+def _step_ratings():
+    from features.save_ratings import save_ratings
+    save_ratings()
 
 
 def _step_train():

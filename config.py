@@ -73,9 +73,7 @@ CURRENT_SEASON = "2026-2027"
 # Temporadas ya completadas que usamos como base historica de entrenamiento.
 # RealGM cubre esto mismo hacia atras hasta 2012-2013 si quieres ampliar
 # el rango.
-HISTORICAL_SEASONS = [
-    "2025-2026",
-]
+HISTORICAL_SEASONS = []
 
 # Todas las temporadas que el pipeline de ingesta recorre, en orden
 # cronologico (importante: el Elo y las medias moviles se acumulan en
