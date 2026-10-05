@@ -27,7 +27,7 @@ const LOGO_FILES: Record<number, string> = {
 const LOCAL_LOGOS: Record<number, string> = {
   1665: "koeln.png",
   2309: "klobenz.png",
-  2258: "wolmirstedt.png",
+  2268: "wolmirstedt.png",
   1567: "sparkassenstars.png",
   1578: "ratiopharm.png",
   1763: "lions.png",
