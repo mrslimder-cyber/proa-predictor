@@ -1,5 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Sora:wght@500;600;700;800&display=swap');
 /* Tema "Deutschland": negro / rojo / oro. Se carga DESPUÉS de globals.css y sobrescribe sus variables. */
+/* Para que el cambio funcione */
 :root {
   --court-bg:#0d0d10; --court-bg-2:#131317; --panel:#18181d; --panel-hover:#202027;
   --line:rgba(255,255,255,.08);

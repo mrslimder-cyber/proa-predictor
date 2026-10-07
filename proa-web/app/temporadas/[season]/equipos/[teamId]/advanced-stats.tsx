@@ -125,3 +125,4 @@ export function AdvancedStatsPanel({ rows, teamId }: { rows: TeamAdvancedRow[]; 
 export function FourFactorsPanel({ rows, teamId }: { rows: TeamFourFactorsRow[]; teamId: number }) {
   return <RankPanel title="Four Factors (Dean Oliver) · ranking de la liga" rows={rows} teamId={teamId} metrics={FOUR_FACTORS} />;
 }
+//a ver si el cambio funciona//
