@@ -1018,12 +1018,27 @@ export async function getModelEvolution(season: string): Promise<EvolutionJornad
 
 // ---------- Ritmo y ratings avanzados ----------
 
-function estimatePossessions(s: {
-  fg2_att: number | null; fg3_att: number | null;
-  oreb: number | null; tov: number | null; ft_att: number | null;
-}): number | null {
-  if (s.fg2_att == null || s.fg3_att == null || s.oreb == null || s.tov == null || s.ft_att == null) return null;
-  return (s.fg2_att + s.fg3_att) - s.oreb + s.tov + 0.44 * s.ft_att;
+/**
+ * Posesiones propias estimadas, formula completa de Dean Oliver:
+ *   FGA + 0.4*FTA - 1.07*(ORB/(ORB + DRB rival))*(FGA - FGM) + TOV
+ * Mismo calculo que features/formulas.py (_own_possessions).
+ */
+function ownPossessions(own: TeamGameStats, opp: TeamGameStats): number | null {
+  if (
+    own.fg2_made == null || own.fg2_att == null || own.fg3_made == null || own.fg3_att == null ||
+    own.ft_att == null || own.oreb == null || own.tov == null || opp.dreb == null
+  ) return null;
+  const fga = own.fg2_att + own.fg3_att;
+  const fgm = own.fg2_made + own.fg3_made;
+  const orbShare = own.oreb + opp.dreb > 0 ? own.oreb / (own.oreb + opp.dreb) : 0;
+  return fga + 0.4 * own.ft_att - 1.07 * orbShare * (fga - fgm) + own.tov;
+}
+
+/** Posesiones del partido: media de la estimacion de ambos equipos (misma cifra para los dos). */
+export function gamePossessions(a: TeamGameStats, b: TeamGameStats): number | null {
+  const pa = ownPossessions(a, b);
+  const pb = ownPossessions(b, a);
+  return pa == null || pb == null ? null : (pa + pb) / 2;
 }
 
 export type TeamAdvancedRow = {
@@ -1064,16 +1079,15 @@ export async function getSeasonAdvancedStats(season: string): Promise<TeamAdvanc
     const pair = byGame.get(g.id);
     if (!pair || pair.length < 2) continue;
     const [a, b] = pair;
+    const poss = gamePossessions(a, b);
+    if (poss == null) continue;
     for (const [own, opp] of [[a, b], [b, a]] as const) {
-      const ownPoss = estimatePossessions(own);
-      const oppPoss = estimatePossessions(opp);
-      if (ownPoss == null || oppPoss == null) continue;
       const e = ensure(own.team_id);
       e.games += 1;
       e.pts += own.pts ?? 0;
-      e.poss += ownPoss;
+      e.poss += poss;
       e.oppPts += opp.pts ?? 0;
-      e.oppPoss += oppPoss;
+      e.oppPoss += poss;
     }
   }
 
@@ -1123,9 +1137,9 @@ export async function getSeasonFourFactors(season: string): Promise<TeamFourFact
   const teamIds = Array.from(new Set(teamStats.map((s) => s.team_id)));
   const teamById = await getTeamsById(teamIds);
 
-  const acc = new Map<number, { games: number; fgm: number; fga: number; fg3m: number; fta: number; tov: number; oreb: number; oppDreb: number }>();
+  const acc = new Map<number, { games: number; fgm: number; fga: number; fg3m: number; ftm: number; fta: number; tov: number; oreb: number; oppDreb: number }>();
   const ensure = (id: number) => {
-    if (!acc.has(id)) acc.set(id, { games: 0, fgm: 0, fga: 0, fg3m: 0, fta: 0, tov: 0, oreb: 0, oppDreb: 0 });
+    if (!acc.has(id)) acc.set(id, { games: 0, fgm: 0, fga: 0, fg3m: 0, ftm: 0, fta: 0, tov: 0, oreb: 0, oppDreb: 0 });
     return acc.get(id)!;
   };
 
@@ -1134,7 +1148,7 @@ export async function getSeasonFourFactors(season: string): Promise<TeamFourFact
     if (!pair || pair.length < 2) continue;
     const [a, b] = pair;
     for (const [own, opp] of [[a, b], [b, a]] as const) {
-      if (own.fg2_att == null || own.fg3_att == null || own.ft_att == null || own.tov == null || own.oreb == null || opp.dreb == null) {
+      if (own.fg2_att == null || own.fg3_att == null || own.ft_made == null || own.ft_att == null || own.tov == null || own.oreb == null || opp.dreb == null) {
         continue;
       }
       const e = ensure(own.team_id);
@@ -1142,6 +1156,7 @@ export async function getSeasonFourFactors(season: string): Promise<TeamFourFact
       e.fgm += (own.fg2_made ?? 0) + (own.fg3_made ?? 0);
       e.fga += own.fg2_att + own.fg3_att;
       e.fg3m += own.fg3_made ?? 0;
+      e.ftm += own.ft_made;
       e.fta += own.ft_att;
       e.tov += own.tov;
       e.oreb += own.oreb;
@@ -1159,7 +1174,7 @@ export async function getSeasonFourFactors(season: string): Promise<TeamFourFact
       efgPct: (e.fgm + 0.5 * e.fg3m) / e.fga,
       tovPct: e.tov / (e.fga + 0.44 * e.fta + e.tov),
       orbPct: e.oreb + e.oppDreb > 0 ? e.oreb / (e.oreb + e.oppDreb) : 0,
-      ftRate: e.fta / e.fga,
+      ftRate: e.ftm / e.fga,
     });
   }
   return rows;

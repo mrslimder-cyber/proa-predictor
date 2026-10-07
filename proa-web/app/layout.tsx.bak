@@ -1,5 +1,4 @@
 import "./globals.css";
-import "./theme.css";
 import NavLinks from "./nav-links";
 
 export const metadata = {

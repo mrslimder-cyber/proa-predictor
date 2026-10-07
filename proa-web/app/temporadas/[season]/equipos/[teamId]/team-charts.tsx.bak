@@ -14,10 +14,10 @@ import {
 } from "recharts";
 import type { TeamGameLog, RosterRow } from "@/lib/stats";
 
-const AMBER = "#FFCE00";
-const DIM = "#a1a1ab";
-const LINE = "#2a2a31";
-const PANEL = "#18181d";
+const AMBER = "#ff8a2b";
+const DIM = "#98a3ad";
+const LINE = "#29323d";
+const PANEL = "#1a2028";
 
 function ChartTooltip({ active, payload, label }: any) {
   if (!active || !payload || payload.length === 0) return null;

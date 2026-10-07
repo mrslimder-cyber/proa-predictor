@@ -51,13 +51,12 @@ function initials(name: string): string {
 export function TeamLogo({
   teamId,
   name,
-  size: baseSize = 24,
+  size = 24,
 }: {
   teamId: number;
   name: string;
   size?: number;
 }) {
-  const size = Math.round(baseSize * 1.3); // logos un 30% mas grandes en toda la web
   const [failed, setFailed] = useState(false);
   const url = teamLogoUrl(teamId);
 

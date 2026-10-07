@@ -42,6 +42,12 @@ def _safe_stat(d: dict, key: str) -> float:
     return value if value is not None else np.nan
 
 
+def estimate_possessions(row: dict) -> float:
+    """Posesiones ≈ FGA - ORB + TOV + 0.44*FTA (fórmula estándar de Dean Oliver)."""
+    fga = row["fg2_att"] + row["fg3_att"]
+    return fga - row["oreb"] + row["tov"] + 0.44 * row["ft_att"]
+
+
 @dataclass
 class TeamState:
     """Estado acumulado de un equipo a medida que avanza la temporada."""

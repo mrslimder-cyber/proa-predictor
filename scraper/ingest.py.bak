@@ -31,7 +31,6 @@ from db.database import get_session, init_db
 from db.models import Game, Team, TeamGameStats, PlayerGameStats
 from scraper.realgm_scraper import get_season_games, get_boxscore
 from scraper.bridge import backfill_new_teams
-from features.formulas import apply_four_factors
 
 
 def upsert_teams(session, games: list[dict], season: str):
@@ -126,9 +125,6 @@ def run(season: str, only_new: bool = True):
                       f"({g['boxscore_url']}) -- se reintentara en la proxima ejecucion.")
                 continue
 
-            # Four Factors siempre con las formulas de Oliver (features/formulas.py),
-            # no con lo que publique RealGM (escala y definicion de FTR distintas).
-            apply_four_factors(box["team_stats"])
             for ts in box["team_stats"]:
                 session.merge(TeamGameStats(game_id=g["game_id"], **ts))
             for ps in box["player_stats"]:
