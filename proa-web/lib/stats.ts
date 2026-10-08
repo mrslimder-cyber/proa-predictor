@@ -1019,8 +1019,8 @@ export async function getModelEvolution(season: string): Promise<EvolutionJornad
 // ---------- Ritmo y ratings avanzados ----------
 
 /**
- * Posesiones propias estimadas, formula completa de Dean Oliver:
- *   FGA + 0.4*FTA - 1.07*(ORB/(ORB + DRB rival))*(FGA - FGM) + TOV
+ * Posesiones propias estimadas, formula completa de Pablo Lopez:
+ *   0,96*(T2 intentados + T3 intentados + 0,44*TL intentados + Perdidas - Rebotes Ofensivos)
  * Mismo calculo que features/formulas.py (_own_possessions).
  */
 function ownPossessions(own: TeamGameStats, opp: TeamGameStats): number | null {
@@ -1031,7 +1031,7 @@ function ownPossessions(own: TeamGameStats, opp: TeamGameStats): number | null {
   const fga = own.fg2_att + own.fg3_att;
   const fgm = own.fg2_made + own.fg3_made;
   const orbShare = own.oreb + opp.dreb > 0 ? own.oreb / (own.oreb + opp.dreb) : 0;
-  return fga + 0.4 * own.ft_att - 1.07 * orbShare * (fga - fgm) + own.tov;
+  return 0.96*(fga + 0.44 * own.ft_att - own.oreb + own.tov);
 }
 
 /** Posesiones del partido: media de la estimacion de ambos equipos (misma cifra para los dos). */
@@ -1172,7 +1172,7 @@ export async function getSeasonFourFactors(season: string): Promise<TeamFourFact
       team,
       games: e.games,
       efgPct: (e.fgm + 0.5 * e.fg3m) / e.fga,
-      tovPct: e.tov / (e.fga + 0.44 * e.fta + e.tov),
+      tovPct: e.tov / 0.96*(e.fga + 0.44 * e.fta + e.tov - e.oreb),
       orbPct: e.oreb + e.oppDreb > 0 ? e.oreb / (e.oreb + e.oppDreb) : 0,
       ftRate: e.ftm / e.fga,
     });

@@ -14,12 +14,12 @@ Convenciones
 
 Four Factors (Oliver)
   eFG%     = (FGM + 0.5*3PM) / FGA
-  TOV%     = TOV / (FGA + 0.44*FTA + TOV)
-  ORB%     = ORB / (ORB + DRB rival)
+  TOV%     = TOV / Posesiones
+  ORB%     = ORB / (FGA - FGM + 0.44(FTA - FTM))
   FT rate  = FTM / FGA            <- tiros libres ANOTADOS (no intentados)
 
 Posesiones (Oliver, formula completa)
-  Poss_equipo = FGA + 0.4*FTA - 1.07*(ORB/(ORB+DRB_rival))*(FGA-FGM) + TOV
+  Poss_equipo = 0.96*(FGA + 0.44*FTA - ORB + TOV)
   Poss_partido = media de Poss_equipo de ambos equipos (misma cifra para los dos)
 
 Ratings (por 100 posesiones)
@@ -57,7 +57,7 @@ def four_factors(own, opp) -> tuple:
     fgm, fga, fg3m, ftm, fta, oreb, _dreb, tov = c
 
     efg = (fgm + 0.5 * fg3m) / fga if fga else None
-    denom = fga + 0.44 * fta + tov
+    denom = 0.96*(fga + 0.44 * fta + tov - oreb)
     tov_pct = tov / denom if denom else None
     ft_rate = ftm / fga if fga else None
 
@@ -82,7 +82,7 @@ def _own_possessions(own, opp) -> Optional[float]:
     fgm, fga, _fg3m, _ftm, fta, oreb, _dreb, tov = c
     opp_dreb = o[6]
     orb_share = oreb / (oreb + opp_dreb) if (oreb + opp_dreb) > 0 else 0.0
-    return fga + 0.4 * fta - 1.07 * orb_share * (fga - fgm) + tov
+    return 0.96*(fga + 0.44 * fta - oreb + tov)
 
 
 def possessions(a, b) -> Optional[float]:
