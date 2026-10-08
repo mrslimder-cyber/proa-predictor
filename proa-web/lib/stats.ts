@@ -1172,7 +1172,7 @@ export async function getSeasonFourFactors(season: string): Promise<TeamFourFact
       team,
       games: e.games,
       efgPct: (e.fgm + 0.5 * e.fg3m) / e.fga,
-      tovPct: e.tov / 0.96*(e.fga + 0.44 * e.fta + e.tov - e.oreb),
+      tovPct: e.tov / 0.960*(e.fga + 0.440 * e.fta + e.tov),
       orbPct: e.oreb + e.oppDreb > 0 ? e.oreb / (e.oreb + e.oppDreb) : 0,
       ftRate: e.ftm / e.fga,
     });

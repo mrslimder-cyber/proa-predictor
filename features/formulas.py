@@ -57,7 +57,7 @@ def four_factors(own, opp) -> tuple:
     fgm, fga, fg3m, ftm, fta, oreb, _dreb, tov = c
 
     efg = (fgm + 0.5 * fg3m) / fga if fga else None
-    denom = 0.96*(fga + 0.44 * fta + tov - oreb)
+    denom = 0.96*(fga + 0.44 * fta + tov)
     tov_pct = tov / denom if denom else None
     ft_rate = ftm / fga if fga else None
 
@@ -82,7 +82,7 @@ def _own_possessions(own, opp) -> Optional[float]:
     fgm, fga, _fg3m, _ftm, fta, oreb, _dreb, tov = c
     opp_dreb = o[6]
     orb_share = oreb / (oreb + opp_dreb) if (oreb + opp_dreb) > 0 else 0.0
-    return 0.96*(fga + 0.44 * fta - oreb + tov)
+    return 0.960*(fga + 0.440 * fta - oreb + tov)
 
 
 def possessions(a, b) -> Optional[float]:
