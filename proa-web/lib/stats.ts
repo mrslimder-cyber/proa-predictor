@@ -1153,7 +1153,6 @@ export async function getSeasonFourFactors(season: string): Promise<TeamFourFact
       }
       const e = ensure(own.team_id);
       e.games += 1;
-      e.fgm += (own.fg2_made ?? 0) + (own.fg3_made ?? 0);
       e.fga += own.fg2_att + own.fg3_att;
       e.fg3m += own.fg3_made ?? 0;
       e.ftm += own.ft_made;
@@ -1172,7 +1171,7 @@ export async function getSeasonFourFactors(season: string): Promise<TeamFourFact
       team,
       games: e.games,
       efgPct: (e.fgm + 0.5 * e.fg3m) / e.fga,
-      tovPct: e.tov / 0.960*(e.fga + 0.440 * e.fta + e.tov),
+      tovPct: e.tov / (0.960*(e.fga + (0.440 * e.fta) + e.tov)),
       orbPct: e.oreb + e.oppDreb > 0 ? e.oreb / (e.oreb + e.oppDreb) : 0,
       ftRate: e.ftm / e.fga,
     });
