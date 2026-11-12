@@ -54,7 +54,7 @@ class EloSystem:
             elo_diff_winner = (home_pre - away_pre) if actual_home == 1.0 else (away_pre - home_pre)
             # Fórmula de margen de victoria estilo FiveThirtyEight: partidos
             # ajustados pesan más, goleadas contra equipos ya inferiores pesan menos.
-            k *= math.log(margin + 1) * (2.2 / ((elo_diff_winner * 0.001) + 2.2))
+            k *= ((margin + 3) ** 0.8) / (7.5 + 0.006 * elo_diff_winner)
 
         home_new = home_pre + k * (actual_home - expected_home)
         away_new = away_pre + k * ((1 - actual_home) - (1 - expected_home))
